@@ -1,29 +1,58 @@
+# Backend-specific secrets and env
+backend/.env
+backend/gcp-service-account.json
+
+# Python caches and artifacts (recursive within backend)
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd
+backend/.Python
+backend/.pytest_cache/
+backend/.pytest
+backend/pytest.ini
+
+# Python virtual envs in backend
+backend/env/
+backend/.venv/
+backend/venv/
+backend/ENV/
+
+
+# Root virtual envs
 .env
-gcp-service-account.json
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
 .venv/
 venv/
 ENV/
-build/
-dist/
-.pytest_cache/
-.coverage
-htmlcov/
+
+gcp-service-account.json
+
+# Build/dist artifacts in backend
+backend/build/
+backend/dist/
+
+# Test/coverage caches in backend
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+backend/coverage.xml
+
+# Editor/cache dirs in backend
+backend/.vscode/
+backend/.idea/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# Misc in backend
+backend/export*
+backend/node_modules/
+backend/tests/
+
+# Global OS junk (safe to ignore at repo root)
 .DS_Store
-.git/
-.vscode/
-.idea/
-.mypy_cache/
-.ruff_cache/
-coverage.xml
-export*
-node_modules/
-tests/
-test_invoices/
+
+# Project-root files you listed to ignore
 invoice_processing_prompt_updated.md
 updated_plan.md
+API_BLUEPRINT.md
+test_invoices/
