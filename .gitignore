@@ -1,0 +1,31 @@
+# Root ignores
+.env
+.gcp-credentials.json
+*.log
+.DS_Store
+.vscode/
+.idea/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pytest_cache/
+__pycache__/
+
+# Python envs
+.venv/
+venv/
+ENV/
+
+# Node/npm (in case of frontend later)
+node_modules/
+
+# Builds and coverage
+build/
+dist/
+coverage/
+coverage.xml
+htmlcov/
+
+# Local test data and exports
+/test_invoices/
+/exports/
