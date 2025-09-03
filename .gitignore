@@ -56,3 +56,54 @@ invoice_processing_prompt_updated.md
 updated_plan.md
 API_BLUEPRINT.md
 test_invoices/
+
+
+# Root-level files to ignore
+.env
+gcp-service-account.json
+invoice_processing_prompt_updated.md
+updated_plan.md
+API_BLUEPRINT.md
+test_invoices/
+
+# Backend-specific secrets and env
+backend/.env
+backend/gcp-service-account.json
+
+# Python caches/artifacts under backend
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/*.pyd
+backend/.Python
+backend/.pytest_cache/
+backend/htmlcov/
+backend/coverage.xml
+backend/pytest.ini
+
+# Virtual envs
+backend/env/
+backend/.venv/
+backend/venv/
+backend/ENV/
+.venv/
+venv/
+ENV/
+
+# Build/dist under backend
+backend/build/
+backend/dist/
+
+# Editor/cache dirs under backend
+backend/.vscode/
+backend/.idea/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# Misc under backend
+backend/export*
+backend/node_modules/
+backend/tests/
+
+# OS junk
+.DS_Store
