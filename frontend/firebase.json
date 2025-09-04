@@ -1,11 +1,26 @@
 {
   "hosting": {
-    "source": ".",
-    "use": "@firebase/nextjs",
+    "public": ".next",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "function": "nextjsFunc"
+      }
     ]
+  },
+  "functions": [
+    {
+      "source": ".",
+      "codebase": "default",
+      "runtime": "nodejs20"
+    }
+  ],
+  "experiments": {
+    "webframeworks": true
   }
 }
