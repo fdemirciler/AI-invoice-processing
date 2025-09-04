@@ -1,6 +1,7 @@
 """Jobs router: upload PDFs, create job records, and enqueue processing tasks."""
 from __future__ import annotations
 
+import asyncio
 import io
 import csv
 import uuid
@@ -17,6 +18,7 @@ from ..models import JobItem, JobsCreateResponse, Limits, Invoice
 from ..services.firestore import FirestoreService
 from ..services.gcs import GCSService
 from ..services.tasks import CloudTasksService, TasksConfig
+from .tasks import process_task as process_job_task
 
 router = APIRouter(tags=["jobs"])
 
@@ -29,7 +31,13 @@ def _count_pdf_pages(data: bytes) -> int:
         raise HTTPException(status_code=400, detail="Invalid or unreadable PDF") from exc
 
 
-@router.post("/jobs", response_model=JobsCreateResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    
+    "/jobs",
+    response_model=JobsCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model_exclude_none=True,
+)
 async def create_jobs(
     files: List[UploadFile] = File(description="One or more PDF files to process"),
     session_id: str = Depends(get_session_id),
@@ -103,6 +111,12 @@ async def create_jobs(
         tasks.enqueue_job(job_id, session_id)
         store.set_job_status(job_id, "queued", "queued")
 
+        # Local emulation: if TASKS_EMULATE is true, process asynchronously without Cloud Tasks
+        if settings.TASKS_EMULATE:
+            asyncio.create_task(
+                process_job_task({"jobId": job_id, "sessionId": session_id})
+            )
+
         job_items.append(JobItem(jobId=job_id, filename=f.filename, status="queued"))
 
     return JobsCreateResponse(
@@ -112,12 +126,6 @@ async def create_jobs(
             maxFiles=settings.MAX_FILES,
             maxSizeMb=settings.MAX_SIZE_MB,
             maxPages=settings.MAX_PAGES,
-        ),
-        note=(
-            "Tasks enqueuing is emulated/no-op locally; set TASKS_EMULATE=false with proper "
-            "GCP_PROJECT, TASKS_QUEUE, TASKS_TARGET_URL, TASKS_SERVICE_ACCOUNT_EMAIL to enable."
-            if settings.TASKS_EMULATE
-            else None
         ),
     )
 
@@ -194,6 +202,11 @@ async def retry_job(job_id: str, session_id: str = Depends(get_session_id)) -> d
 
     tasks.enqueue_job(job_id, session_id)
     store.set_job_status(job_id, "queued", "queued")
+    # Local emulation: also trigger processing on retry
+    if settings.TASKS_EMULATE:
+        asyncio.create_task(
+            process_job_task({"jobId": job_id, "sessionId": session_id})
+        )
     return {"jobId": job_id, "status": "queued"}
 
 
