@@ -20,6 +20,8 @@ class JobItem(BaseModel):
     jobId: str
     filename: str
     status: str
+    sizeBytes: int | None = None
+    pageCount: int | None = None
 
 
 class JobsCreateResponse(BaseModel):

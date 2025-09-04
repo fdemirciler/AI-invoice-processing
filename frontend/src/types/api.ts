@@ -22,6 +22,8 @@ export interface JobItem {
   filename: string;
   status: JobStatus;
   stages?: Record<string, string>;
+  sizeBytes?: number;
+  pageCount?: number;
 }
 
 export interface JobsCreateResponse {
@@ -38,6 +40,8 @@ export interface JobDetail {
   resultJson?: any;
   confidenceScore?: number;
   error?: string;
+  sizeBytes?: number;
+  pageCount?: number;
 }
 
 export interface ListJobsResponse {

@@ -81,7 +81,15 @@ export default function Home() {
           if (detail.status === 'done' && !seenActiveStageRef.current.has(jobId)) {
             setJobs((prev: JobItem[]) =>
               prev.map((j: JobItem) =>
-                j.jobId === jobId ? { ...j, status: 'processing' as JobStatus, stages: detail.stages || j.stages } : j
+                j.jobId === jobId
+                  ? {
+                      ...j,
+                      status: 'processing' as JobStatus,
+                      stages: detail.stages || j.stages,
+                      sizeBytes: (detail as any).sizeBytes ?? (j as any).sizeBytes,
+                      pageCount: (detail as any).pageCount ?? (j as any).pageCount,
+                    }
+                  : j
               )
             );
             // Show 'Processing' briefly, then finalize to 'done' and add results
@@ -89,7 +97,15 @@ export default function Home() {
               if (!isMounted.current) return;
               setJobs((prev: JobItem[]) =>
                 prev.map((j: JobItem) =>
-                  j.jobId === jobId ? { ...j, status: 'done' as JobStatus, stages: detail.stages || j.stages } : j
+                  j.jobId === jobId
+                    ? {
+                        ...j,
+                        status: 'done' as JobStatus,
+                        stages: detail.stages || j.stages,
+                        sizeBytes: (detail as any).sizeBytes ?? (j as any).sizeBytes,
+                        pageCount: (detail as any).pageCount ?? (j as any).pageCount,
+                      }
+                    : j
                 )
               );
               const disp = toDisplay(detail);
@@ -110,7 +126,13 @@ export default function Home() {
           setJobs((prev: JobItem[]) =>
             prev.map((j: JobItem) =>
               j.jobId === jobId
-                ? { ...j, status: displayStatus, stages: detail.stages || j.stages }
+                ? {
+                    ...j,
+                    status: displayStatus,
+                    stages: detail.stages || j.stages,
+                    sizeBytes: (detail as any).sizeBytes ?? (j as any).sizeBytes,
+                    pageCount: (detail as any).pageCount ?? (j as any).pageCount,
+                  }
                 : j
             )
           );
@@ -152,10 +174,18 @@ export default function Home() {
           try {
             const d = await getJob(j.jobId, sessionId);
             if (!isMounted.current) return;
-            // Update job with freshest status and stages immediately
+            // Update job with freshest status, stages, and any missing metadata
             setJobs((prev: JobItem[]) =>
               prev.map((it: JobItem) =>
-                it.jobId === j.jobId ? { ...it, status: d.status as JobStatus, stages: d.stages || it.stages } : it
+                it.jobId === j.jobId
+                  ? {
+                      ...it,
+                      status: d.status as JobStatus,
+                      stages: d.stages || it.stages,
+                      sizeBytes: (d as any).sizeBytes ?? (it as any).sizeBytes,
+                      pageCount: (d as any).pageCount ?? (it as any).pageCount,
+                    }
+                  : it
               )
             );
             if (d.status === 'done') {
@@ -282,7 +312,7 @@ export default function Home() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-2">
               <Sparkles className="h-6 w-6 text-primary" />
-              <h1 className="text-md font-bold font-headline text-primary">AI powered Invoice Processing</h1>
+              <h1 className="text-md font-bold font-headline text-primary">AI Powered Invoice Processing</h1>
             </div>
             <TooltipProvider>
               <div className="flex items-center gap-2">
@@ -322,7 +352,7 @@ export default function Home() {
 
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
-          <SmartHub jobs={jobs as any} limits={limits} onFilesAdded={handleFilesAdded} onRetry={handleRetryJob} />
+          <SmartHub jobs={jobs} limits={limits} onFilesAdded={handleFilesAdded} onRetry={handleRetryJob} />
           {hasResults && <ResultsTable results={results} onExport={handleExport} />}
         </div>
       </main>

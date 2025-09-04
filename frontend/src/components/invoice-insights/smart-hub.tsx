@@ -17,6 +17,7 @@ type SmartHubJob = {
   filename: string;
   status: JobStatus;
   sizeBytes?: number;
+  pageCount?: number;
   stages?: Record<string, string>;
 };
 
@@ -30,6 +31,13 @@ interface SmartHubProps {
 const formatKb = (bytes?: number) => {
   if (!bytes && bytes !== 0) return '';
   return `${Math.round(bytes / 1024)} KB`;
+};
+
+const formatPages = (pages?: number) => {
+  if (pages === undefined || pages === null) return '';
+  const n = Number(pages);
+  if (!Number.isFinite(n)) return '';
+  return `${n} ${n === 1 ? 'page' : 'pages'}`;
 };
 
 const simpleLabel = (status: JobStatus): 'Queued' | 'Processing' | 'Done' | 'Failed' => {
@@ -263,12 +271,22 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                     >
                     <FileText className="h-6 w-6 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate" title={job.filename}>
-                        {job.filename}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                        {formatKb(job.sizeBytes)}
-                        </p>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p
+                            className="text-sm font-medium text-foreground truncate"
+                            title={job.filename}
+                          >
+                            {job.filename}
+                          </p>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {[
+                              job.sizeBytes !== undefined ? formatKb(job.sizeBytes) : null,
+                              job.pageCount !== undefined ? formatPages(job.pageCount) : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        </div>
                         {job.status !== 'failed' && (
                           <div className="mt-2">
                             <div className="flex items-center justify-end mb-1">

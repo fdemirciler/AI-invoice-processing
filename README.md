@@ -8,6 +8,10 @@ This is the backend service for the Invoice Processing Web App.
 - OCR: Google Cloud Vision (PDF OCR via GCS)
 - LLM: Gemini 2.5 Flash (primary); OpenRouter fallback
 
+![Workflow](image.png)
+
+
+
 ## Local Development
 
 1) Create and activate a virtual environment

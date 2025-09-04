@@ -117,7 +117,15 @@ async def create_jobs(
                 process_job_task({"jobId": job_id, "sessionId": session_id})
             )
 
-        job_items.append(JobItem(jobId=job_id, filename=f.filename, status="queued"))
+        job_items.append(
+            JobItem(
+                jobId=job_id,
+                filename=f.filename,
+                status="queued",
+                sizeBytes=size_bytes,
+                pageCount=page_count,
+            )
+        )
 
     return JobsCreateResponse(
         sessionId=session_id,
@@ -142,6 +150,8 @@ async def get_job_status(job_id: str, session_id: str = Depends(get_session_id))
         "jobId": job.get("jobId"),
         "status": job.get("status"),
         "stages": job.get("stages", {}),
+        "sizeBytes": job.get("sizeBytes"),
+        "pageCount": job.get("pageCount"),
         "resultJson": job.get("resultJson"),
         "confidenceScore": job.get("confidenceScore"),
         "error": job.get("error"),
@@ -162,6 +172,8 @@ async def list_session_jobs(session_id: str, header_session: str = Depends(get_s
             "filename": d.get("filename"),
             "status": d.get("status"),
             "stages": d.get("stages", {}),
+            "sizeBytes": d.get("sizeBytes"),
+            "pageCount": d.get("pageCount"),
         }
         for d in docs
     ]
