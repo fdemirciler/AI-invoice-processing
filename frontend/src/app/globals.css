@@ -26,8 +26,9 @@ body {
     --destructive-foreground: 0 0% 98%;
     --success: 142 76% 36%; /* Success Green */
     --success-foreground: 0 0% 98%;
-    --border: 214.3 31.8% 91.4%; /* Lighter gray for borders */
-    --input: 214.3 31.8% 91.4%;
+    /* Slightly darken borders/inputs for better contrast in light mode */
+    --border: 214.3 31.8% 88%;
+    --input: 214.3 31.8% 88%;
     --ring: 217 91% 60%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -63,8 +64,9 @@ body {
     --destructive-foreground: 210 40% 98%;
     --success: 142 66% 45%;
     --success-foreground: 0 0% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
+    /* Slightly lighter border/input for better contrast vs background */
+    --border: 215 22% 28%;
+    --input: 215 22% 28%;
     --ring: 217 91% 60%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;

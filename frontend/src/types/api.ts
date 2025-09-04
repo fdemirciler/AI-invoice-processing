@@ -4,6 +4,9 @@ export type JobStatus =
   | 'uploaded'
   | 'queued'
   | 'processing'
+  // Intermediate backend statuses we map to "processing" in the UI
+  | 'extracting'
+  | 'llm'
   | 'done'
   | 'failed';
 

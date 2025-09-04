@@ -24,9 +24,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  devIndicators: {
-    buildActivity: false,
-  },
+  devIndicators: false,
 };
 
 export default nextConfig;

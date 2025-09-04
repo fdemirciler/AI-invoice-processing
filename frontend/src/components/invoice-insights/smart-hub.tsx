@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
 import type { JobStatus, Limits } from '@/types/api';
 
 type SmartHubJob = {
@@ -16,6 +17,7 @@ type SmartHubJob = {
   filename: string;
   status: JobStatus;
   sizeBytes?: number;
+  stages?: Record<string, string>;
 };
 
 interface SmartHubProps {
@@ -30,18 +32,89 @@ const formatKb = (bytes?: number) => {
   return `${Math.round(bytes / 1024)} KB`;
 };
 
+const simpleLabel = (status: JobStatus): 'Queued' | 'Processing' | 'Done' | 'Failed' => {
+  if (status === 'done') return 'Done';
+  if (status === 'failed') return 'Failed';
+  if (status === 'queued' || status === 'uploaded') return 'Queued';
+  // extracting, llm, processing -> Processing
+  return 'Processing';
+};
+
 const StatusIndicator = ({ status }: { status: JobStatus }) => {
-  switch (status) {
-    case 'processing':
-      return <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"><Loader2 className="mr-1 h-3 w-3 animate-spin" />Processing</Badge>;
-    case 'done':
-      return <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"><CheckCircle2 className="mr-1 h-3 w-3" />Done</Badge>;
-    case 'failed':
-      return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Failed</Badge>;
+  const label = simpleLabel(status);
+  switch (label) {
+    case 'Processing':
+      return (
+        <Badge
+          variant="secondary"
+          className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+        >
+          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+          Processing
+        </Badge>
+      );
+    case 'Done':
+      return (
+        <Badge
+          variant="secondary"
+          className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+        >
+          <CheckCircle2 className="mr-1 h-3 w-3" />
+          Done
+        </Badge>
+      );
+    case 'Failed':
+      return (
+        <Badge variant="destructive">
+          <XCircle className="mr-1 h-3 w-3" />
+          Failed
+        </Badge>
+      );
     default:
-      return <Badge variant="outline">{status}</Badge>;
+      return <Badge variant="outline">Queued</Badge>;
   }
 };
+
+const stageOrder = ['uploaded', 'queued', 'processing', 'extracting', 'llm', 'done'] as const;
+
+function progressFromStages(stages: Record<string, string> | undefined, status: JobStatus): number {
+  // Failed jobs do not show progress; return 0 to render nothing upstream
+  if (status === 'failed') return 0;
+
+  // Determine current stage primarily from status (backend sets status reliably)
+  const statusAsStage = ((): (typeof stageOrder)[number] | null => {
+    switch (status) {
+      case 'uploaded':
+      case 'queued':
+      case 'processing':
+      case 'extracting':
+      case 'llm':
+      case 'done':
+        return status as any;
+      default:
+        return null;
+    }
+  })();
+
+  let idx = statusAsStage ? stageOrder.indexOf(statusAsStage) : -1;
+
+  // If status is not one of the ordered stages, infer from the single key in stages map
+  if (idx < 0 && stages && Object.keys(stages).length > 0) {
+    const keys = Object.keys(stages) as (typeof stageOrder[number])[];
+    const known = keys.find((k) => stageOrder.includes(k));
+    if (known) idx = stageOrder.indexOf(known);
+  }
+
+  if (idx < 0) {
+    // Fallback heuristics
+    if (status === 'done') return 100;
+    if (status === 'queued' || status === 'uploaded') return 16;
+    return 50;
+  }
+
+  const pct = Math.round(((idx + 1) / stageOrder.length) * 100);
+  return Math.min(100, Math.max(0, pct));
+}
 
 
 export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps) {
@@ -125,7 +198,8 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
   const totalJobs = jobs.length;
   const processingJobs = jobs.filter(j => j.status !== 'done' && j.status !== 'failed').length;
 
-  const scrollAreaHeight = totalJobs > 0 ? Math.min(totalJobs * 76, 256) : 256;
+  // Slightly taller rows to accommodate the progress bar
+  const scrollAreaHeight = totalJobs > 0 ? Math.min(totalJobs * 92, 300) : 256;
 
 
   return (
@@ -195,6 +269,16 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                         <p className="text-xs text-muted-foreground">
                         {formatKb(job.sizeBytes)}
                         </p>
+                        {job.status !== 'failed' && (
+                          <div className="mt-2">
+                            <div className="flex items-center justify-end mb-1">
+                              <span className="text-xs text-muted-foreground">
+                                {progressFromStages(job.stages, job.status)}%
+                              </span>
+                            </div>
+                            <Progress value={progressFromStages(job.stages, job.status)} className="h-2" />
+                          </div>
+                        )}
                     </div>
                     <div className="flex items-center space-x-2">
                         <StatusIndicator status={job.status} />

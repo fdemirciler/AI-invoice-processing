@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
 import { Sparkles, Moon, Sun, RefreshCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
-import { getOrCreateSessionId, resetSessionId } from '@/lib/session';
+import { resetSessionId } from '@/lib/session';
 import { getConfig, listJobs, createJobs, getJob, retryJob, deleteSession, exportCsv } from '@/lib/api';
 import type { Limits, JobItem, JobDetail, InvoiceDisplay, JobStatus } from '@/types/api';
 
@@ -38,11 +39,14 @@ export default function Home() {
   const [theme, setTheme] = useState('dark');
   const { toast } = useToast();
   const isMounted = useRef(true);
+  // Track whether we've seen an active stage for a job, to avoid skipping straight from queued -> done in the UI
+  const seenActiveStageRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'dark';
     setTheme(savedTheme);
-    const sid = getOrCreateSessionId();
+    // On browser refresh, create a brand new session
+    const sid = resetSessionId();
     setSessionId(sid);
     return () => {
       isMounted.current = false;
@@ -58,14 +62,58 @@ export default function Home() {
 
   const schedulePoll = useCallback(
     (jobId: string, attempt = 0) => {
-      const base = 1000;
-      const max = 10000;
-      const delay = Math.min(max, Math.floor(base * Math.pow(1.8, attempt))) + Math.floor(Math.random() * 300);
+      // Bursty early polling to avoid missing short-lived statuses (e.g., 'processing')
+      const burst = [200, 500, 1000, 1800];
+      const fallback = (prev: number) => Math.min(10000, Math.floor(prev * 1.8));
+      const base = attempt < burst.length ? burst[attempt] : fallback(burst[burst.length - 1] * Math.pow(1.8, attempt - burst.length));
+      const jitter = Math.floor(Math.random() * 200);
+      const delay = Math.min(10000, base + jitter);
       window.setTimeout(async () => {
         if (!isMounted.current) return;
         try {
           const detail = await getJob(jobId, sessionId);
-          setJobs((prev: JobItem[]) => prev.map((j: JobItem) => (j.jobId === jobId ? { ...j, status: detail.status as JobStatus } : j)));
+          // Record if we've observed any active stage
+          if (detail.status === 'processing' || (detail.status as any) === 'extracting' || (detail.status as any) === 'llm') {
+            seenActiveStageRef.current.add(jobId);
+          }
+
+          // If backend jumped straight to 'done' and we haven't shown any active stage, simulate a brief 'processing' transition
+          if (detail.status === 'done' && !seenActiveStageRef.current.has(jobId)) {
+            setJobs((prev: JobItem[]) =>
+              prev.map((j: JobItem) =>
+                j.jobId === jobId ? { ...j, status: 'processing' as JobStatus, stages: detail.stages || j.stages } : j
+              )
+            );
+            // Show 'Processing' briefly, then finalize to 'done' and add results
+            window.setTimeout(() => {
+              if (!isMounted.current) return;
+              setJobs((prev: JobItem[]) =>
+                prev.map((j: JobItem) =>
+                  j.jobId === jobId ? { ...j, status: 'done' as JobStatus, stages: detail.stages || j.stages } : j
+                )
+              );
+              const disp = toDisplay(detail);
+              if (disp) {
+                setResults((prev: InvoiceDisplay[]) => {
+                  const exists = prev.some((r: InvoiceDisplay) => r.jobId === disp.jobId);
+                  return exists ? prev : [disp, ...prev];
+                });
+              }
+            }, 500);
+            return;
+          }
+          const displayStatus: JobStatus =
+            detail.status === 'queued' && seenActiveStageRef.current.has(jobId)
+              ? ('processing' as JobStatus)
+              : (detail.status as JobStatus);
+
+          setJobs((prev: JobItem[]) =>
+            prev.map((j: JobItem) =>
+              j.jobId === jobId
+                ? { ...j, status: displayStatus, stages: detail.stages || j.stages }
+                : j
+            )
+          );
           if (detail.status === 'done') {
             const disp = toDisplay(detail);
             if (disp) {
@@ -104,6 +152,12 @@ export default function Home() {
           try {
             const d = await getJob(j.jobId, sessionId);
             if (!isMounted.current) return;
+            // Update job with freshest status and stages immediately
+            setJobs((prev: JobItem[]) =>
+              prev.map((it: JobItem) =>
+                it.jobId === j.jobId ? { ...it, status: d.status as JobStatus, stages: d.stages || it.stages } : it
+              )
+            );
             if (d.status === 'done') {
               const disp = toDisplay(d);
               if (disp) {
@@ -139,7 +193,24 @@ export default function Home() {
         if (resp.note) {
           toast({ title: 'Notice', description: resp.note });
         }
-        resp.jobs.forEach(j => schedulePoll(j.jobId, 0));
+        resp.jobs.forEach((j) => {
+          schedulePoll(j.jobId, 0);
+          // Shorten the visual 'Queued' duration with a brief, optimistic transition to 'Processing'
+          window.setTimeout(() => {
+            if (!isMounted.current) return;
+            setJobs((prev: JobItem[]) =>
+              prev.map((it: JobItem) => {
+                if (it.jobId !== j.jobId) return it;
+                if (it.status === 'queued' || it.status === 'uploaded') {
+                  // mark as seen active to avoid later 'done' -> simulated processing bounce
+                  seenActiveStageRef.current.add(j.jobId);
+                  return { ...it, status: 'processing' as JobStatus };
+                }
+                return it;
+              })
+            );
+          }, 300);
+        });
       } catch (err: any) {
         toast({ title: 'Upload failed', description: String(err?.message || err), variant: 'destructive' as any });
       }
@@ -154,6 +225,20 @@ export default function Home() {
         await retryJob(jobId, sessionId);
         setJobs((prev: JobItem[]) => prev.map((j: JobItem) => (j.jobId === jobId ? { ...j, status: 'queued' as JobStatus } : j)));
         schedulePoll(jobId, 0);
+        // As with fresh uploads, shorten the queued visual state on retries
+        window.setTimeout(() => {
+          if (!isMounted.current) return;
+          setJobs((prev: JobItem[]) =>
+            prev.map((it: JobItem) => {
+              if (it.jobId !== jobId) return it;
+              if (it.status === 'queued' || it.status === 'uploaded') {
+                seenActiveStageRef.current.add(jobId);
+                return { ...it, status: 'processing' as JobStatus };
+              }
+              return it;
+            })
+          );
+        }, 300);
       } catch (err: any) {
         toast({ title: 'Retry failed', description: String(err?.message || err), variant: 'destructive' as any });
       }
@@ -197,16 +282,40 @@ export default function Home() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-2">
               <Sparkles className="h-6 w-6 text-primary" />
-              <h1 className="text-md font-bold font-headline text-muted-foreground">Invoice Insights</h1>
+              <h1 className="text-md font-bold font-headline text-primary">AI powered Invoice Processing</h1>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
-                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={handleClearSession} aria-label="Clear session">
-                <RefreshCcw className="h-5 w-5" />
-              </Button>
-            </div>
+            <TooltipProvider>
+              <div className="flex items-center gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={toggleTheme}
+                      aria-label="Toggle theme"
+                      className="hover:bg-primary/20"
+                    >
+                      {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>light/dark mode</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleClearSession}
+                      aria-label="Clear session"
+                      className="hover:bg-primary/20"
+                    >
+                      <RefreshCcw className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>restart session</TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
           </div>
         </div>
       </header>
