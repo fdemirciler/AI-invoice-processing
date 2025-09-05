@@ -8,9 +8,10 @@ import re
 import unicodedata
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..config import get_settings
+from ..deps import verify_oidc_token
 from ..models import Invoice
 from ..services.firestore import FirestoreService
 from ..services.gcs import GCSService
@@ -65,7 +66,10 @@ def _compute_confidence(ocr_text: str, pages: int, inv: Invoice) -> float:
 
 
 @router.post("/process")
-async def process_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+async def process_task(
+    payload: Dict[str, Any],
+    decoded_token: dict = Depends(verify_oidc_token),
+) -> Dict[str, Any]:
     """Process a job: expects JSON { jobId, sessionId }.
 
     In production with Cloud Tasks, this endpoint should verify the OIDC audience.

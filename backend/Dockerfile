@@ -20,3 +20,4 @@ EXPOSE 8080
 
 # Use Cloud Run's PORT env var when provided
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+    
