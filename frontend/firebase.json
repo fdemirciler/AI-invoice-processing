@@ -6,6 +6,15 @@
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "invoice-backend",
+          "region": "europe-west4"
+        }
+      }
     ]
   },
   "experiments": {

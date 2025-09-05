@@ -13,9 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm ci && npm run build
+      - run: cd frontend && npm install && npm run build
+        env:
+          NEXT_PUBLIC_API_BASE_URL: /api
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_AI_INVOICE_SCAN }}
           projectId: ai-invoice-scan
+          entryPoint: frontend
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframeworks
+          NEXT_PUBLIC_API_BASE_URL: /api
