@@ -162,51 +162,102 @@ export default function Home() {
   const rehydrate = useCallback(async () => {
     if (!sessionId) return;
     try {
-      const cfg = await getConfig();
+      const [cfgRes, jobsRes] = await Promise.allSettled([
+        getConfig(),
+        listJobs(sessionId),
+      ]);
       if (!isMounted.current) return;
-      setLimits(cfg);
-      const list = await listJobs(sessionId);
-      if (!isMounted.current) return;
-      setJobs(list.jobs);
-      // Fetch details for each job to collect completed results and kick off polling for pending
-      await Promise.all(
-        list.jobs.map(async (j) => {
-          try {
-            const d = await getJob(j.jobId, sessionId);
-            if (!isMounted.current) return;
-            // Update job with freshest status, stages, and any missing metadata
-            setJobs((prev: JobItem[]) =>
-              prev.map((it: JobItem) =>
-                it.jobId === j.jobId
-                  ? {
-                      ...it,
-                      status: d.status as JobStatus,
-                      stages: d.stages || it.stages,
-                      sizeBytes: (d as any).sizeBytes ?? (it as any).sizeBytes,
-                      pageCount: (d as any).pageCount ?? (it as any).pageCount,
-                    }
-                  : it
-              )
-            );
-            if (d.status === 'done') {
-              const disp = toDisplay(d);
-              if (disp) {
-                setResults((prev: InvoiceDisplay[]) => {
-                  const exists = prev.some((r: InvoiceDisplay) => r.jobId === disp.jobId);
-                  return exists ? prev : [disp, ...prev];
-                });
+
+      // Apply config if available
+      if (cfgRes.status === 'fulfilled') {
+        setLimits(cfgRes.value);
+      }
+
+      // Apply jobs if available
+      if (jobsRes.status === 'fulfilled') {
+        const list = jobsRes.value;
+        setJobs(list.jobs);
+        // Fetch details for each job to collect completed results and kick off polling for pending
+        await Promise.all(
+          list.jobs.map(async (j) => {
+            try {
+              const d = await getJob(j.jobId, sessionId);
+              if (!isMounted.current) return;
+              // Update job with freshest status, stages, and any missing metadata
+              setJobs((prev: JobItem[]) =>
+                prev.map((it: JobItem) =>
+                  it.jobId === j.jobId
+                    ? {
+                        ...it,
+                        status: d.status as JobStatus,
+                        stages: d.stages || it.stages,
+                        sizeBytes: (d as any).sizeBytes ?? (it as any).sizeBytes,
+                        pageCount: (d as any).pageCount ?? (it as any).pageCount,
+                      }
+                    : it
+                )
+              );
+              if (d.status === 'done') {
+                const disp = toDisplay(d);
+                if (disp) {
+                  setResults((prev: InvoiceDisplay[]) => {
+                    const exists = prev.some((r: InvoiceDisplay) => r.jobId === disp.jobId);
+                    return exists ? prev : [disp, ...prev];
+                  });
+                }
+              } else if (d.status !== 'failed') {
+                schedulePoll(j.jobId, 0);
               }
-            } else if (d.status !== 'failed') {
+            } catch {
+              // If getJob fails, schedule polling anyway
               schedulePoll(j.jobId, 0);
             }
-          } catch {
-            // If getJob fails, schedule polling anyway
-            schedulePoll(j.jobId, 0);
-          }
-        })
-      );
+          })
+        );
+      }
+
+      // If both failed, decide whether to retry quietly or show toast
+      if (cfgRes.status === 'rejected' && jobsRes.status === 'rejected') {
+        const errCfg: any = (cfgRes as any).reason;
+        const errJobs: any = (jobsRes as any).reason;
+        const msgCfg = String(errCfg?.message || errCfg || '');
+        const msgJobs = String(errJobs?.message || errJobs || '');
+        const combined = `${msgCfg} | ${msgJobs}`.trim();
+        const isNetwork =
+          (errCfg && (errCfg.name === 'TypeError' || msgCfg.toLowerCase().includes('failed to fetch')))
+          || (errJobs && (errJobs.name === 'TypeError' || msgJobs.toLowerCase().includes('failed to fetch')));
+        if (isNetwork) {
+          if (!isMounted.current) return;
+          window.setTimeout(() => {
+            if (!isMounted.current) return;
+            rehydrate();
+          }, 600);
+        } else {
+          toast({ title: 'Failed to load config or jobs', description: combined || 'Unknown error', variant: 'destructive' as any });
+        }
+      } else if (jobsRes.status === 'rejected') {
+        // Jobs failed but config succeeded — app can still render uploads; retry jobs quietly
+        const errJobs: any = (jobsRes as any).reason;
+        const msgJobs = String(errJobs?.message || errJobs || '');
+        const isNetwork = (errJobs && (errJobs.name === 'TypeError' || msgJobs.toLowerCase().includes('failed to fetch')));
+        if (!isMounted.current) return;
+        window.setTimeout(() => {
+          if (!isMounted.current) return;
+          rehydrate();
+        }, isNetwork ? 600 : 1000);
+      }
     } catch (err: any) {
-      toast({ title: 'Failed to load config or jobs', description: String(err?.message || err), variant: 'destructive' as any });
+      const msg = String(err?.message || err);
+      const isNetwork = (err && (err.name === 'TypeError' || msg.toLowerCase().includes('failed to fetch')));
+      if (isNetwork) {
+        if (!isMounted.current) return;
+        window.setTimeout(() => {
+          if (!isMounted.current) return;
+          rehydrate();
+        }, 600);
+      } else {
+        toast({ title: 'Failed to load config or jobs', description: msg, variant: 'destructive' as any });
+      }
     }
   }, [sessionId, schedulePoll, toast]);
 
