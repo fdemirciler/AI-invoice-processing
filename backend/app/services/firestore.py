@@ -129,13 +129,8 @@ class FirestoreService:
 
     # Queries
     def list_jobs_by_session(self, session_id: str) -> List[Dict[str, Any]]:
-        q = self._jobs.where("sessionId", "==", session_id)
+        q = self._jobs.where("sessionId", "==", session_id).order_by("createdAt")
         docs = [doc.to_dict() for doc in q.stream()]
-        # Sort client-side by createdAt if available to avoid composite index requirement
-        try:
-            docs.sort(key=lambda d: d.get("createdAt") or datetime.min.replace(tzinfo=timezone.utc))
-        except Exception:
-            pass
         return docs
 
     def list_done_jobs_by_session(self, session_id: str) -> List[Dict[str, Any]]:
