@@ -1,4 +1,6 @@
-# Invoice Processing Backend (FastAPI)
+# AI Invoice Processing
+
+A modern invoice processing application using AI for OCR and data extraction. Backend (FastAPI)
 
 This is the backend service for the Invoice Processing Web App.
 
