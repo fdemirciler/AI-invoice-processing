@@ -1,14 +1,20 @@
 """Tasks worker endpoint: processes a single job end-to-end.
 
 Pipeline: Acquire lock -> OCR -> preprocess -> LLM -> validate -> score -> persist -> cleanup.
+Includes granular error handling and always releases the processing lock.
 """
 from __future__ import annotations
 
 import re
 import unicodedata
 from typing import Any, Dict
+import logging
+from pydantic import ValidationError
+import httpx
+from google.api_core.exceptions import GoogleAPIError
 
 from fastapi import APIRouter, Depends, HTTPException
+from google.cloud import firestore
 
 from ..config import get_settings
 from ..deps import verify_oidc_token
@@ -19,6 +25,7 @@ from ..services.llm import LLMService
 from ..services.vision import VisionService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])  # mounted under /api
+logger = logging.getLogger(__name__)
 
 
 def _normalize_text(text: str) -> str:
@@ -85,40 +92,66 @@ async def process_task(
     gcs = GCSService(settings.GCS_BUCKET)
     vision = VisionService(settings.GCS_BUCKET)
     llm = LLMService()
+    worker_id = "tasks-worker"  # TODO: derive from hostname or env if needed
 
     # Acquire processing lock (idempotent). If cannot acquire, return 200 to avoid retries storm.
-    locked = store.acquire_processing_lock(job_id, worker_id="tasks-worker")
+    locked = store.acquire_processing_lock(
+        job_id, worker_id=worker_id, stale_minutes=settings.LOCK_STALE_MINUTES
+    )
     if not locked:
+        logger.info("[%s][%s] lock not acquired", job_id, worker_id)
         return {"ok": True, "jobId": job_id, "note": "lock not acquired; likely processed by another worker"}
 
-    # Read job data
-    job = store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    if job.get("sessionId") != session_id:
-        raise HTTPException(status_code=400, detail="sessionId mismatch")
-
-    gcs_uri: str = job.get("gcsUri", "")
-    if not gcs_uri.startswith("gs://"):
-        store.set_error(job_id, "Missing GCS URI for job")
-        return {"ok": False, "jobId": job_id, "error": "missing gcsUri"}
-
+    # Read job data and process inside a guarded block to ensure lock is released
     try:
+        # Heartbeat: lock acquired
+        try:
+            store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
+        except Exception:
+            pass
+
+        job = store.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.get("sessionId") != session_id:
+            raise HTTPException(status_code=400, detail="sessionId mismatch")
+
+        gcs_uri: str = job.get("gcsUri", "")
+        if not gcs_uri.startswith("gs://"):
+            store.set_error(job_id, "Missing GCS URI for job")
+            return {"ok": False, "jobId": job_id, "error": "missing gcsUri"}
+
         # OCR stage
         store.set_job_status(job_id, "extracting", "extracting")
+        try:
+            store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
+        except Exception:
+            pass
         temp_prefix = f"gs://{settings.GCS_BUCKET}/vision/{job_id}/"
         ocr = vision.ocr_pdf_from_gcs(
             gcs_uri,
             temp_prefix=temp_prefix,
             batch_size=min(job.get("pageCount", 20), settings.MAX_PAGES),
         )
+        try:
+            store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
+        except Exception:
+            pass
 
         # Preprocess text
         text_norm = _normalize_text(ocr.text)
 
         # LLM extraction stage
         store.set_job_status(job_id, "llm", "llm")
-        parsed = llm.extract_invoice(text_norm)
+        try:
+            store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
+        except Exception:
+            pass
+        parsed = await llm.extract_invoice_async(text_norm)
+        try:
+            store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
+        except Exception:
+            pass
 
         # Validate & coerce
         invoice = Invoice.model_validate_jsonish(parsed)
@@ -137,17 +170,45 @@ async def process_task(
 
         # Cleanup input PDF (best-effort)
         try:
-            # Convert gs://bucket/path -> path
             prefix = f"gs://{settings.GCS_BUCKET}/"
             if gcs_uri.startswith(prefix):
                 blob_path = gcs_uri[len(prefix) :]
                 gcs.delete_blob(blob_path)
-        except Exception:
-            # ignore cleanup errors
+        except Exception:  # best-effort cleanup
             pass
 
         return {"ok": True, "jobId": job_id, "status": "done", "confidence": confidence}
+
+    except ValidationError as exc:
+        logger.error("[%s] validation error: %s", job_id, exc)
+        store.set_error(job_id, f"Validation error: {str(exc)}")
+        return {"ok": False, "jobId": job_id, "error": "validation error"}
+
+    except (httpx.RequestError, httpx.HTTPStatusError) as exc:
+        logger.error("[%s] network/LLM error: %s", job_id, exc)
+        store.set_error(job_id, "Transient API error, will retry")
+        return {"ok": False, "jobId": job_id, "error": "transient api error"}
+
+    except GoogleAPIError as exc:
+        logger.error("[%s] GCP service error: %s", job_id, exc)
+        store.set_error(job_id, "Storage or Firestore error")
+        return {"ok": False, "jobId": job_id, "error": "gcp service error"}
+
+    except HTTPException as exc:
+        # Preserve HTTP semantics but also mark the job as failed for traceability
+        logger.error("[%s] http error: %s", job_id, exc.detail)
+        store.set_error(job_id, exc.detail)
+        # Re-raise so FastAPI still responds with proper status
+        raise
+
     except Exception as exc:  # noqa: BLE001
-        # Persist error and release lock
-        store.set_error(job_id, str(exc))
-        return {"ok": False, "jobId": job_id, "error": str(exc)}
+        logger.exception("[%s] unexpected error", job_id)
+        store.set_error(job_id, "Unexpected internal error")
+        return {"ok": False, "jobId": job_id, "error": "unexpected error"}
+
+    finally:
+        # Always release the lock to avoid stuck jobs
+        try:
+            store.release_processing_lock(job_id)
+        except Exception:
+            pass

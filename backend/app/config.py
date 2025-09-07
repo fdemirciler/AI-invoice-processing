@@ -52,6 +52,9 @@ class Settings:
     RETENTION_LOOP_ENABLE: bool
     RETENTION_LOOP_INTERVAL_MIN: int
 
+    # Locks
+    LOCK_STALE_MINUTES: int
+
     def __init__(self) -> None:
         # Load .env once (supports parent directories)
         load_dotenv(find_dotenv(), override=False)
@@ -85,6 +88,9 @@ class Settings:
         self.RETENTION_HOURS = int(os.getenv("RETENTION_HOURS", "24"))
         self.RETENTION_LOOP_ENABLE = os.getenv("RETENTION_LOOP_ENABLE", "true").lower() == "true"
         self.RETENTION_LOOP_INTERVAL_MIN = int(os.getenv("RETENTION_LOOP_INTERVAL_MIN", "60"))
+
+        # Locks
+        self.LOCK_STALE_MINUTES = int(os.getenv("LOCK_STALE_MINUTES", "15"))
 
     @staticmethod
     def _get_list(name: str, default: str = "") -> List[str]:

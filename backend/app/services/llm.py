@@ -1,6 +1,8 @@
 """LLM service: Gemini primary, OpenRouter fallback, returning strict JSON.
 
-This module provides a minimal wrapper around HTTP APIs using requests.
+Async implementation using httpx so the FastAPI event loop is not blocked
+while waiting on upstream LLM APIs. Includes lightweight retries via tenacity
+for transient network and 429/5xx responses.
 """
 from __future__ import annotations
 
@@ -8,12 +10,27 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-import requests
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_random_exponential,
+)
 
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+# Retry predicate: network errors, timeouts, and 429/5xx HTTP errors
+def _is_retryable(exc: Exception) -> bool:  # pragma: no cover - simple predicate
+    if isinstance(exc, (httpx.RequestError, httpx.TimeoutException)):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        return status == 429 or 500 <= status < 600
+    return False
 
 JSON_INSTRUCTIONS = (
     "You are an information extraction engine. Extract invoice data as strict JSON with keys: "
@@ -35,7 +52,28 @@ class LLMService:
     def _openrouter_url(self) -> str:
         return "https://openrouter.ai/api/v1/chat/completions"
 
-    def parse_with_gemini(self, text: str) -> Dict[str, Any]:
+    @retry(
+        reraise=True,
+        stop=stop_after_attempt(3),
+        wait=wait_random_exponential(multiplier=0.2, max=5),
+        retry=retry_if_exception(_is_retryable),
+    )
+    async def _post_json(self, url: str, *, headers: Optional[Dict[str, str]] = None, payload: Dict[str, Any], timeout: float = 60.0) -> Dict[str, Any]:
+        """HTTP POST JSON with retries. Raises httpx.HTTPStatusError on non-2xx.
+
+        Returns parsed JSON dict.
+        """
+        t = httpx.Timeout(timeout, connect=5.0)
+        async with httpx.AsyncClient(timeout=t) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            # Raise for non-2xx and feed status to retry predicate
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as e:  # rewrap with context for tenacity
+                raise e
+            return resp.json()
+
+    async def parse_with_gemini_async(self, text: str) -> Dict[str, Any]:
         if not self.settings.GEMINI_API_KEY:
             raise RuntimeError("Missing GEMINI_API_KEY")
         payload = {
@@ -54,9 +92,7 @@ class LLMService:
                 "responseMimeType": "application/json",
             },
         }
-        resp = requests.post(self._gemini_url(), json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
+        data = await self._post_json(self._gemini_url(), payload=payload)
         # Gemini may return candidates[0].content.parts[0].text
         try:
             cands = data["candidates"][0]
@@ -70,7 +106,7 @@ class LLMService:
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(f"Gemini returned non-JSON: {e}")
 
-    def parse_with_openrouter(self, text: str) -> Dict[str, Any]:
+    async def parse_with_openrouter_async(self, text: str) -> Dict[str, Any]:
         if not self.settings.OPENROUTER_API_KEY:
             raise RuntimeError("Missing OPENROUTER_API_KEY")
         headers = {
@@ -85,9 +121,7 @@ class LLMService:
             ],
             "temperature": 0.2,
         }
-        resp = requests.post(self._openrouter_url(), headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
+        data = await self._post_json(self._openrouter_url(), headers=headers, payload=payload)
         try:
             content = data["choices"][0]["message"]["content"]
         except Exception as e:  # noqa: BLE001
@@ -98,15 +132,14 @@ class LLMService:
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(f"OpenRouter returned non-JSON: {e}")
 
-    def extract_invoice(self, text: str) -> Dict[str, Any]:
-        # Try Gemini first
+    async def extract_invoice_async(self, text: str) -> Dict[str, Any]:
+        """Try Gemini, fallback to OpenRouter, returning parsed invoice JSON."""
         try:
-            return self.parse_with_gemini(text)
+            return await self.parse_with_gemini_async(text)
         except Exception as e:
             logger.warning("Gemini failed: %s", e)
-        # Fallback to OpenRouter
         try:
-            return self.parse_with_openrouter(text)
+            return await self.parse_with_openrouter_async(text)
         except Exception as e:
             logger.error("OpenRouter failed: %s", e)
             raise

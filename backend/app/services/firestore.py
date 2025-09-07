@@ -55,7 +55,8 @@ class FirestoreService:
     ) -> Optional[Dict[str, Any]]:
         """Attempt to acquire a processing lock transactionally.
 
-        Returns the job document on success, or None if contention/invalid state.
+        Allows takeover when the existing lock is stale. Returns the updated job
+        on success, or None on contention/invalid state.
         """
         ref = self._jobs.document(job_id)
 
@@ -67,19 +68,30 @@ class FirestoreService:
             data = snap.to_dict() or {}
             status = data.get("status")
             lock = data.get("processingLock") or {}
-            locked_at = lock.get("lockedAt")
+            locked_at = lock.get("lockedAt")  # Firestore timestamp or None
 
-            # allow takeover if lock is stale
+            # Determine staleness: if no lock, it's takeable; if lockedAt older than threshold, takeable
             can_take = False
-            if not lock:
+            if status in {"uploaded", "queued", "failed"}:
                 can_take = True
+            elif status == "processing":
+                if not lock or not locked_at:
+                    can_take = True
+                else:
+                    try:
+                        # Convert Firestore timestamp to aware datetime
+                        if hasattr(locked_at, "timestamp"):
+                            locked_dt = locked_at
+                        else:
+                            locked_dt = locked_at  # best effort
+                        threshold = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+                        can_take = locked_dt < threshold
+                    except Exception:
+                        # If we can't parse, allow conservative takeover after stale_minutes
+                        can_take = True
             else:
-                # server timestamps are not available client-side; use forward takeover via status re-check
-                # as a simplification: if currently not 'processing', allow takeover
-                can_take = status != "processing"
-
-            if status not in {"uploaded", "queued", "failed", "processing"}:
                 return None
+
             if not can_take:
                 return None
 
@@ -134,14 +146,15 @@ class FirestoreService:
         return docs
 
     def list_done_jobs_by_session(self, session_id: str) -> List[Dict[str, Any]]:
-        # Use equality filters only (no order_by) to avoid requiring a composite index.
-        q = self._jobs.where("sessionId", "==", session_id).where("status", "==", "done")
+        # Server-side sort by createdAt DESC (requires composite index on
+        # sessionId ASC, status ASC, createdAt DESC)
+        q = (
+            self._jobs
+            .where("sessionId", "==", session_id)
+            .where("status", "==", "done")
+            .order_by("createdAt", direction=firestore.Query.DESCENDING)
+        )
         docs = [doc.to_dict() for doc in q.stream()]
-        # Sort client-side by createdAt if available
-        try:
-            docs.sort(key=lambda d: d.get("createdAt") or datetime.min.replace(tzinfo=timezone.utc))
-        except Exception:
-            pass
         return docs
 
     def delete_stale_jobs(self, older_than_hours: int = 24) -> int:

@@ -45,6 +45,14 @@ We keep things simple and respectful of your data.
 Bottom line: no processed data is kept on the server once you end your session or hit refresh/clear,
 and old sessions are automatically purged after a short retention window.
 
+## Reliability & performance
+
+- Async LLM calls: The backend uses `httpx` with timeouts and retries so slow AI calls don’t block other requests.
+- Server-side sorting: Firestore now handles filtering and ordering for “done” jobs using a composite index
+  (`sessionId`, `status`, `createdAt DESC`), which scales better than sorting in code.
+- Resilient workers: A stale‑lock takeover lets a healthy worker reclaim jobs stuck in `processing` if another
+  worker crashes. We also send light “heartbeats” during long stages so you can observe progress.
+
 ## Local Development
 
 1) Create and activate a virtual environment
