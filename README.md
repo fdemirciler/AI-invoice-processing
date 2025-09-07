@@ -1,18 +1,49 @@
 # AI Invoice Processing
 
-A modern invoice processing application using AI for OCR and data extraction. Backend (FastAPI)
+AI-powered invoice reader that turns your PDFs into structured data.
 
-This is the backend service for the Invoice Processing Web App.
+What it does
+- Upload one or more PDF invoices.
+- The app extracts text (OCR) and interprets it with an LLM.
+- Results appear in a table; you can export them to CSV.
 
-- Framework: FastAPI (Python 3.11)
-- Runtime: Cloud Run (europe-west4)
-- Async engine: Cloud Tasks (HTTP target)
-- OCR: Google Cloud Vision (PDF OCR via GCS)
-- LLM: Gemini 2.5 Flash (primary); OpenRouter fallback
+How it works (see diagram below)
+1) Frontend sends `POST /api/jobs` with your PDFs.
+2) Backend uploads files to Cloud Storage and creates job records in Firestore.
+3) A background worker (Cloud Tasks + OIDC) triggers OCR with Vision, then parses
+   the text using Gemini (primary) or OpenRouter (fallback).
+4) When a job is done, the frontend polls and shows results; you can export or
+   clear a session at any time.
 
 ![Workflow](image.png)
 
+Tech stack
+- Frontend: Next.js on Firebase Hosting (same-origin `/api` rewrite)
+- Backend: FastAPI on Cloud Run (public for app endpoints; worker secured by OIDC)
+- Storage & DB: Cloud Storage (PDFs), Firestore (jobs + results)
+- Queue/Async: Cloud Tasks
+- OCR & AI: Google Cloud Vision OCR, Gemini; OpenRouter as fallback LLM
 
+Tip: See below for developer notes if you want to run or extend the project.
+
+## Privacy & security
+
+We keep things simple and respectful of your data.
+
+- PDFs are stored in Google Cloud Storage only long enough to process them.
+  When you clear a session (Delete), we remove the files and related job docs right away
+  in `backend/app/routers/jobs.py::delete_session()`.
+- There’s also a small housekeeping loop (see `RETENTION_*` settings in `backend/app/main.py`)
+  that cleans up stale sessions automatically after a time window.
+- The background worker endpoint `POST /api/tasks/process` is not public: Cloud Tasks calls it
+  using OIDC, and we verify that token in `backend/app/deps.py::verify_oidc_token()`.
+- The public API is locked down with practical limits (max files, size, and page counts) and
+  strict PDF checks to reduce abuse.
+- CORS is restricted to our front‑end origins from `settings.CORS_ORIGINS`, so browsers can’t
+  call the API from random sites.
+
+Bottom line: no processed data is kept on the server once you end your session or hit refresh/clear,
+and old sessions are automatically purged after a short retention window.
 
 ## Local Development
 

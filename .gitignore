@@ -175,3 +175,29 @@ frontend/pnpm-debug.log*
 frontend/lerna-debug.log*
 frontend/.DS_Store
 frontend/Thumbs.db
+
+# --- Additional safety ignores (appended) ---
+# Root editor and OS clutter
+.vscode/
+.idea/
+Thumbs.db
+**/.DS_Store
+
+# Root env/secrets (avoid committing accidental files)
+.env.*
+*.env.local
+
+# Backend env variants
+backend/.env.*
+
+# Downloaded or exported logs/snapshots at repo root
+downloaded-logs-*.json
+
+# Common Python/Poetry extras at repo root (if created accidentally)
+.python-version
+poetry.lock
+
+# Misc cache/work dirs
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
