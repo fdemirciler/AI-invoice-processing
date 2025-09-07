@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
-  title: 'Invoice Insights',
-  description: 'Upload, process, and analyze invoices with AI.',
+  title: 'Invoice Reader',
+  description: 'Upload, process, and extract information from invoices with AI.',
 };
 
 export default function RootLayout({

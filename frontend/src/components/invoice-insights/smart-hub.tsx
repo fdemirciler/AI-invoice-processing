@@ -65,7 +65,7 @@ const StatusIndicator = ({ status }: { status: JobStatus }) => {
       return (
         <Badge
           variant="secondary"
-          className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+          className="bg-green-200 text-green-900 dark:bg-green-900/30 dark:text-green-200"
         >
           <CheckCircle2 className="mr-1 h-3 w-3" />
           Done
@@ -205,6 +205,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
   
   const totalJobs = jobs.length;
   const processingJobs = jobs.filter(j => j.status !== 'done' && j.status !== 'failed').length;
+  const allDone = totalJobs > 0 && jobs.every((j) => j.status === 'done');
 
   // Slightly taller rows to accommodate the progress bar
   const scrollAreaHeight = totalJobs > 0 ? Math.min(totalJobs * 92, 300) : 256;
@@ -215,7 +216,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
             {totalJobs > 0 && <List className="w-5 h-5" />}
-            {totalJobs > 0 ? "Processing..." : "Upload Invoices"}
+            {totalJobs > 0 ? (allDone ? "Processed" : "Processing...") : "Upload Invoices"}
         </CardTitle>
       </CardHeader>
       <CardContent>

@@ -1,13 +1,13 @@
-# AI Invoice Processing
+# AI Invoice Processing App
 
-AI-powered invoice reader that turns your PDFs into structured data.
+AI-powered invoice processing workflow that turns invoices in PDFs into structured data (HTML table and CSV export). It's designed to handle invoices in English and Dutch and extract key information such as invoice number, date, amount, line items and other relevant details.
 
-What it does
+## What it does
 - Upload one or more PDF invoices.
 - The app extracts text (OCR) and interprets it with an LLM.
 - Results appear in a table; you can export them to CSV.
 
-How it works (see diagram below)
+## How it works (see diagram below)
 1) Frontend sends `POST /api/jobs` with your PDFs.
 2) Backend uploads files to Cloud Storage and creates job records in Firestore.
 3) A background worker (Cloud Tasks + OIDC) triggers OCR with Vision, then parses
@@ -17,7 +17,7 @@ How it works (see diagram below)
 
 ![Workflow](image.png)
 
-Tech stack
+## Tech stack
 - Frontend: Next.js on Firebase Hosting (same-origin `/api` rewrite)
 - Backend: FastAPI on Cloud Run (public for app endpoints; worker secured by OIDC)
 - Storage & DB: Cloud Storage (PDFs), Firestore (jobs + results)
