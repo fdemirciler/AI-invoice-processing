@@ -42,12 +42,25 @@ jobs:
       - name: Show gcloud version
         run: gcloud version
 
-      # Deploy directly from source using Cloud Build (no manual docker build needed)
-      - name: Deploy to Cloud Run
+      - name: Configure Docker auth for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          IMAGE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/invoice-backend/invoice-backend:${{ github.sha }}"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          docker build -t "$IMAGE" ./backend
+
+      - name: Push image to Artifact Registry
+        run: |
+          docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run (from image)
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --project=${{ env.GCP_PROJECT }} \
             --region=${{ env.GCP_REGION }} \
-            --source=backend \
+            --image="$IMAGE" \
             --service-account=${{ env.RUNTIME_SA }} \
             --allow-unauthenticated
