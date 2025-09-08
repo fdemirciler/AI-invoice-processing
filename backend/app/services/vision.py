@@ -99,31 +99,53 @@ class VisionService:
         return groups
 
     def _is_text_quality_sufficient(self, text: str) -> bool:
-        """Basic quality check: minimum length and presence of keyword groups or currency symbols."""
-        settings = get_settings()
-        if not text or len(text) < settings.OCR_TEXT_MIN_CHARS:
+        """
+        Performs a more robust quality check on extracted text.
+        Checks for minimum length, keywords, and now structural integrity patterns.
+        """
+        if not text or len(text) < 200:
             return False
 
+        # --- Keyword Check (existing logic) ---
+        required_keywords = ["invoice", "total", "factuur", "totaal"]
         text_lower = text.lower()
-        groups = self._parse_keyword_groups()
-        if not groups:
-            return True
+        if not any(keyword in text_lower for keyword in required_keywords):
+            if not any(symbol in text for symbol in ["€", "$", "£"]):
+                return False
 
-        # A currency symbol can satisfy the monetary group (last group) if present
-        currency_present = any(sym in text for sym in ["€", "$", "£"])
+        # --- Character Ratio Check (existing logic) ---
+        alpha_chars = 0
+        non_alpha_numeric_chars = 0
+        for char in text:
+            if char.isalpha():
+                alpha_chars += 1
+            elif not char.isspace() and not char.isnumeric():
+                non_alpha_numeric_chars += 1
+        
+        if alpha_chars == 0:
+            return False
 
-        satisfied = []
-        for i, grp in enumerate(groups):
-            if any(tok in text_lower for tok in grp):
-                satisfied.append(True)
-            else:
-                # If it's the last group, allow currency as fallback
-                if i == len(groups) - 1 and currency_present:
-                    satisfied.append(True)
-                else:
-                    satisfied.append(False)
+        badness_ratio = non_alpha_numeric_chars / alpha_chars
+        if badness_ratio > 0.3:
+            return False
 
-        return all(satisfied)
+        # --- NEW: Structural Pattern Check for CSV-like lines ---
+        # Heuristic: If many lines look like CSV data, the text layer is likely bad.
+        lines = text.splitlines()
+        # To keep this check fast, we only sample the first 50 lines.
+        sample_lines = lines[:50]
+        csv_like_line_count = 0
+        for line in sample_lines:
+            # Check for lines that start with a quote and contain a comma
+            # which is a strong signal of a poorly extracted text layer.
+            if line.strip().startswith('"') and "," in line:
+                csv_like_line_count += 1
+        
+        # If more than 20% of the sampled lines look like CSV, fail the check.
+        if len(sample_lines) > 0 and (csv_like_line_count / len(sample_lines)) > 0.2:
+            return False
+
+        return True
 
     def _ocr_sync(self, gcs_uri: str, page_count: int) -> OcrResult:
         """Synchronous Vision OCR for small PDFs (returns result directly)."""
