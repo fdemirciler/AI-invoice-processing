@@ -7,7 +7,7 @@ AI-powered invoice processing workflow that turns invoices in PDFs into structur
 - The app extracts text (OCR) and interprets it with an LLM.
 - Results appear in a table; you can export them to CSV.
 
-## How it works (see diagram below)
+## How it works
 1) Frontend sends `POST /api/jobs` with your PDFs.
 2) Backend uploads files to Cloud Storage and creates job records in Firestore.
 3) A background worker (Cloud Tasks + OIDC) triggers OCR with Vision, then parses
@@ -15,7 +15,7 @@ AI-powered invoice processing workflow that turns invoices in PDFs into structur
 4) When a job is done, the frontend polls and shows results; you can export or
    clear a session at any time.
 
-![Workflow](image.png)
+![Workflow](diagram.png)
 
 ## Tech stack
 - Frontend: Next.js on Firebase Hosting (same-origin `/api` rewrite)
@@ -52,6 +52,8 @@ and old sessions are automatically purged after a short retention window.
   (`sessionId`, `status`, `createdAt DESC`), which scales better than sorting in code.
 - Resilient workers: A stale‑lock takeover lets a healthy worker reclaim jobs stuck in `processing` if another
   worker crashes. We also send light “heartbeats” during long stages so you can observe progress.
+- Tiered OCR: Tries a PDF text layer first (PyPDF) and skips OCR if quality is sufficient; otherwise uses
+  synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
 
 ## Local Development
 
@@ -103,6 +105,12 @@ Environment variables (defaults shown):
 
 # OCR language hints
 - OCR_LANG_HINTS=en,nl
+
+# OCR tiering
+- OCR_SYNC_MAX_PAGES=2
+- OCR_PYPDF_MAX_PAGES=10
+- OCR_TEXT_MIN_CHARS=200
+- OCR_TEXT_KEYWORDS=invoice|factuur;total|totaal|bedrag|omschrijving|prijs
 
 # Retention
 - RETENTION_HOURS=24

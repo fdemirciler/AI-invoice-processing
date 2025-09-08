@@ -46,6 +46,10 @@ class Settings:
 
     # OCR
     OCR_LANG_HINTS: List[str]
+    OCR_SYNC_MAX_PAGES: int
+    OCR_PYPDF_MAX_PAGES: int
+    OCR_TEXT_MIN_CHARS: int
+    OCR_TEXT_KEYWORDS: str  # semicolon-separated groups of keywords; groups use '|' for synonyms
 
     # Retention
     RETENTION_HOURS: int
@@ -83,6 +87,14 @@ class Settings:
 
         # OCR
         self.OCR_LANG_HINTS = self._get_list("OCR_LANG_HINTS", default="en,nl")
+        self.OCR_SYNC_MAX_PAGES = int(os.getenv("OCR_SYNC_MAX_PAGES", "2"))
+        self.OCR_PYPDF_MAX_PAGES = int(os.getenv("OCR_PYPDF_MAX_PAGES", "10"))
+        self.OCR_TEXT_MIN_CHARS = int(os.getenv("OCR_TEXT_MIN_CHARS", "200"))
+        # groups: 'invoice|factuur' and 'total|totaal|bedrag|omschrijving|prijs'
+        self.OCR_TEXT_KEYWORDS = os.getenv(
+            "OCR_TEXT_KEYWORDS",
+            "invoice|factuur;total|totaal|bedrag|omschrijving|prijs",
+        )
 
         # Retention
         self.RETENTION_HOURS = int(os.getenv("RETENTION_HOURS", "24"))

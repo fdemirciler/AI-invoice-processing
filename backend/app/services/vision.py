@@ -1,25 +1,32 @@
 """Google Cloud Vision OCR service for PDFs stored in GCS.
 
-Uses async PDF OCR: reads PDF from GCS and writes results (JSON) to a temporary
-GCS prefix, aggregates full text, then deletes the temporary outputs.
+Tiered strategy:
+- Try PyPDF text-layer extraction first (fast, free). If text quality is sufficient, skip OCR.
+- Use synchronous Vision for short scans (low overhead for small PDFs).
+- Fall back to asynchronous Vision for longer scans (robust for many pages).
 
 Note: Keep batch_size <= MAX_PAGES to avoid partial outputs for our limit.
 """
 from __future__ import annotations
 
+import io
 import json
 import time
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, List
 
 from google.cloud import storage
 from google.cloud import vision_v1 as vision
+from pypdf import PdfReader
+
+from ..config import get_settings
 
 
 @dataclass
 class OcrResult:
     text: str
     pages: int
+    method: str = "vision_async"
 
 
 class VisionService:
@@ -28,12 +35,118 @@ class VisionService:
         self._vision = vision.ImageAnnotatorClient()
         self._bucket = self._storage.bucket(bucket_name)
 
-    def ocr_pdf_from_gcs(self, gcs_uri: str, temp_prefix: str, batch_size: int = 20) -> OcrResult:
-        """Run Vision PDF OCR for a GCS PDF and return aggregated text.
+    # Public API (keeps original name). Added optional page_count for tiering.
+    def ocr_pdf_from_gcs(
+        self, gcs_uri: str, temp_prefix: str, batch_size: int = 20, page_count: int | None = None
+    ) -> OcrResult:
+        """Tiered OCR for a GCS PDF and return aggregated text.
 
         gcs_uri: gs://bucket/path/to/file.pdf
         temp_prefix: gs://bucket/tmp/output/prefix/
         """
+        settings = get_settings()
+
+        # If we don't know page count, fall back to async (robust for any size)
+        if page_count is None:
+            return self._ocr_async(gcs_uri, temp_prefix, batch_size=batch_size)
+
+        # 1) Try PyPDF text layer for small-ish PDFs
+        if page_count <= settings.OCR_PYPDF_MAX_PAGES:
+            try:
+                pypdf_res = self._try_extract_text_layer(gcs_uri, page_count)
+                if self._is_text_quality_sufficient(pypdf_res.text):
+                    pypdf_res.method = "pypdf"
+                    return pypdf_res
+            except Exception:
+                # Ignore and continue to OCR paths
+                pass
+
+        # 2) Use synchronous Vision OCR for short scans
+        if page_count <= settings.OCR_SYNC_MAX_PAGES:
+            return self._ocr_sync(gcs_uri, page_count)
+
+        # 3) Fall back to async for longer scans
+        return self._ocr_async(gcs_uri, temp_prefix, batch_size=batch_size)
+
+    # --- Helpers ---
+    def _try_extract_text_layer(self, gcs_uri: str, page_count: int) -> OcrResult:
+        """Extract text layer with PyPDF if present (downloads the PDF)."""
+        blob_path = gcs_uri.replace(f"gs://{self._bucket.name}/", "")
+        blob = self._bucket.blob(blob_path)
+        pdf_bytes = blob.download_as_bytes()
+
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        full_text: List[str] = []
+        for page in reader.pages:
+            try:
+                full_text.append(page.extract_text() or "")
+            except Exception:
+                full_text.append("")
+
+        return OcrResult(text="\n".join(full_text).strip(), pages=page_count, method="pypdf")
+
+    def _parse_keyword_groups(self) -> List[List[str]]:
+        settings = get_settings()
+        raw = settings.OCR_TEXT_KEYWORDS.strip()
+        groups: List[List[str]] = []
+        if not raw:
+            return groups
+        for grp in raw.split(";"):
+            tokens = [t.strip().lower() for t in grp.split("|") if t.strip()]
+            if tokens:
+                groups.append(tokens)
+        return groups
+
+    def _is_text_quality_sufficient(self, text: str) -> bool:
+        """Basic quality check: minimum length and presence of keyword groups or currency symbols."""
+        settings = get_settings()
+        if not text or len(text) < settings.OCR_TEXT_MIN_CHARS:
+            return False
+
+        text_lower = text.lower()
+        groups = self._parse_keyword_groups()
+        if not groups:
+            return True
+
+        # A currency symbol can satisfy the monetary group (last group) if present
+        currency_present = any(sym in text for sym in ["€", "$", "£"])
+
+        satisfied = []
+        for i, grp in enumerate(groups):
+            if any(tok in text_lower for tok in grp):
+                satisfied.append(True)
+            else:
+                # If it's the last group, allow currency as fallback
+                if i == len(groups) - 1 and currency_present:
+                    satisfied.append(True)
+                else:
+                    satisfied.append(False)
+
+        return all(satisfied)
+
+    def _ocr_sync(self, gcs_uri: str, page_count: int) -> OcrResult:
+        """Synchronous Vision OCR for small PDFs (returns result directly)."""
+        feature = vision.Feature(type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION)
+        gcs_source = vision.GcsSource(uri=gcs_uri)
+        input_config = vision.InputConfig(gcs_source=gcs_source, mime_type="application/pdf")
+        request = vision.AnnotateFileRequest(
+            input_config=input_config, features=[feature], pages=list(range(1, page_count + 1))
+        )
+        response = self._vision.batch_annotate_files(requests=[request])
+
+        full_text: List[str] = []
+        pages = 0
+        for file_resp in response.responses:
+            for img_resp in getattr(file_resp, "responses", []) or []:
+                fta = getattr(img_resp, "full_text_annotation", None)
+                if fta and getattr(fta, "text", None):
+                    full_text.append(fta.text)
+                pages += 1
+
+        return OcrResult(text="\n".join(full_text).strip(), pages=pages or page_count, method="vision_sync")
+
+    def _ocr_async(self, gcs_uri: str, temp_prefix: str, batch_size: int = 20) -> OcrResult:
+        """Asynchronous Vision OCR for larger PDFs (writes outputs to GCS, then aggregates)."""
         input_config = vision.InputConfig(
             gcs_source=vision.GcsSource(uri=gcs_uri), mime_type="application/pdf"
         )
@@ -52,7 +165,7 @@ class VisionService:
         prefix_path = temp_prefix.replace(f"gs://{self._bucket.name}/", "")
         blobs = list(self._storage.list_blobs(self._bucket.name, prefix=prefix_path))
 
-        full_text = []
+        full_text: List[str] = []
         page_total = 0
         for b in blobs:
             data = b.download_as_bytes()
@@ -61,7 +174,6 @@ class VisionService:
                 fta = r.get("fullTextAnnotation")
                 if fta and "text" in fta:
                     full_text.append(fta["text"])
-                # Increment pages even if no text to keep consistent count
                 page_total += 1
 
         # Cleanup temporary OCR outputs
@@ -71,4 +183,4 @@ class VisionService:
             except Exception:
                 pass
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=page_total)
+        return OcrResult(text="\n".join(full_text).strip(), pages=page_total, method="vision_async")

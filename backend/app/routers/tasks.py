@@ -128,11 +128,18 @@ async def process_task(
         except Exception:
             pass
         temp_prefix = f"gs://{settings.GCS_BUCKET}/vision/{job_id}/"
+        page_count = job.get("pageCount", settings.MAX_PAGES)
         ocr = vision.ocr_pdf_from_gcs(
             gcs_uri,
             temp_prefix=temp_prefix,
-            batch_size=min(job.get("pageCount", 20), settings.MAX_PAGES),
+            batch_size=min(page_count, settings.MAX_PAGES),
+            page_count=page_count,
         )
+        try:
+            store.update_job(job_id, {"ocrMethod": ocr.method})
+        except Exception:
+            pass
+        logger.info("[%s][%s] OCR method: %s", job_id, worker_id, getattr(ocr, "method", "unknown"))
         try:
             store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
         except Exception:
