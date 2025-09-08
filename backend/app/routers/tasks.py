@@ -23,6 +23,7 @@ from ..services.firestore import FirestoreService
 from ..services.gcs import GCSService
 from ..services.llm import LLMService
 from ..services.vision import VisionService
+from ..services.preprocessor import PreprocessorService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])  # mounted under /api
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ async def process_task(
     store = FirestoreService()
     gcs = GCSService(settings.GCS_BUCKET)
     vision = VisionService(settings.GCS_BUCKET)
+    pre = PreprocessorService()
     llm = LLMService()
     worker_id = "tasks-worker"  # TODO: derive from hostname or env if needed
 
@@ -145,8 +147,19 @@ async def process_task(
         except Exception:
             pass
 
-        # Preprocess text
-        text_norm = _normalize_text(ocr.text)
+        # Preprocess text: page-level + line-level pruning, then normalize
+        pages = ocr.page_texts if getattr(ocr, "page_texts", None) else [ocr.text]
+        pruned_text = pre.prune_and_prepare(pages)
+        # Estimate and store token reduction (heuristic: 4 chars/token)
+        try:
+            before_tokens = max(1, len(ocr.text) // 4)
+            after_tokens = max(1, len(pruned_text) // 4)
+            reduction_pct = round(100 * (before_tokens - after_tokens) / before_tokens, 1)
+            store.update_job(job_id, {"preprocReductionPct": float(reduction_pct)})
+            logger.info("[%s][%s] preproc reduction ~%s%%", job_id, worker_id, reduction_pct)
+        except Exception:
+            pass
+        text_norm = _normalize_text(pruned_text)
 
         # LLM extraction stage
         store.set_job_status(job_id, "llm", "llm")

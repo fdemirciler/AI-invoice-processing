@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Tuple, List
 
 from google.cloud import storage
@@ -27,6 +27,7 @@ class OcrResult:
     text: str
     pages: int
     method: str = "vision_async"
+    page_texts: List[str] = field(default_factory=list)
 
 
 class VisionService:
@@ -83,7 +84,7 @@ class VisionService:
             except Exception:
                 full_text.append("")
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=page_count, method="pypdf")
+        return OcrResult(text="\n".join(full_text).strip(), pages=page_count, method="pypdf", page_texts=full_text)
 
     def _parse_keyword_groups(self) -> List[List[str]]:
         settings = get_settings()
@@ -135,15 +136,19 @@ class VisionService:
         response = self._vision.batch_annotate_files(requests=[request])
 
         full_text: List[str] = []
+        page_texts: List[str] = []
         pages = 0
         for file_resp in response.responses:
             for img_resp in getattr(file_resp, "responses", []) or []:
                 fta = getattr(img_resp, "full_text_annotation", None)
                 if fta and getattr(fta, "text", None):
                     full_text.append(fta.text)
+                    page_texts.append(fta.text)
+                else:
+                    page_texts.append("")
                 pages += 1
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=pages or page_count, method="vision_sync")
+        return OcrResult(text="\n".join(full_text).strip(), pages=pages or page_count, method="vision_sync", page_texts=page_texts)
 
     def _ocr_async(self, gcs_uri: str, temp_prefix: str, batch_size: int = 20) -> OcrResult:
         """Asynchronous Vision OCR for larger PDFs (writes outputs to GCS, then aggregates)."""
@@ -166,6 +171,7 @@ class VisionService:
         blobs = list(self._storage.list_blobs(self._bucket.name, prefix=prefix_path))
 
         full_text: List[str] = []
+        page_texts: List[str] = []
         page_total = 0
         for b in blobs:
             data = b.download_as_bytes()
@@ -174,6 +180,9 @@ class VisionService:
                 fta = r.get("fullTextAnnotation")
                 if fta and "text" in fta:
                     full_text.append(fta["text"])
+                    page_texts.append(fta["text"]) 
+                else:
+                    page_texts.append("")
                 page_total += 1
 
         # Cleanup temporary OCR outputs
@@ -183,4 +192,4 @@ class VisionService:
             except Exception:
                 pass
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=page_total, method="vision_async")
+        return OcrResult(text="\n".join(full_text).strip(), pages=page_total, method="vision_async", page_texts=page_texts)
