@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
-import { Sparkles, Moon, Sun, RefreshCcw } from 'lucide-react';
+import { Sparkles, Moon, Sun, RefreshCcw, Github } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import { resetSessionId } from '@/lib/session';
@@ -421,7 +421,7 @@ export default function Home() {
                       className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-primary/20"
                       title="GitHub"
                     >
-                      <img src="/github-logo.svg" alt="GitHub" className="h-5 w-5" />
+                      <Github className="h-5 w-5" />
                     </a>
                   </TooltipTrigger>
                   <TooltipContent>GitHub</TooltipContent>
