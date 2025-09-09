@@ -103,16 +103,10 @@ export async function deleteSession(sessionId: string): Promise<{ sessionId: str
 }
 
 async function safeError(res: Response): Promise<string> {
-  // Clone the response so we don't consume the body stream twice
-  const clone = res.clone();
   try {
-    const data = await clone.json();
-    return typeof (data as any)?.detail === 'string' ? (data as any).detail : JSON.stringify(data);
+    const data = await res.json();
+    return typeof data?.detail === 'string' ? data.detail : JSON.stringify(data);
   } catch {
-    try {
-      return await res.clone().text();
-    } catch {
-      return `${res.status} ${res.statusText}`;
-    }
+    return await res.text();
   }
 }

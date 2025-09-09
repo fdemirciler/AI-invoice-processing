@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Tuple, List
 
 from google.cloud import storage
@@ -27,7 +27,6 @@ class OcrResult:
     text: str
     pages: int
     method: str = "vision_async"
-    page_texts: List[str] = field(default_factory=list)
 
 
 class VisionService:
@@ -84,7 +83,7 @@ class VisionService:
             except Exception:
                 full_text.append("")
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=page_count, method="pypdf", page_texts=full_text)
+        return OcrResult(text="\n".join(full_text).strip(), pages=page_count, method="pypdf")
 
     def _parse_keyword_groups(self) -> List[List[str]]:
         settings = get_settings()
@@ -99,53 +98,31 @@ class VisionService:
         return groups
 
     def _is_text_quality_sufficient(self, text: str) -> bool:
-        """
-        Performs a more robust quality check on extracted text.
-        Checks for minimum length, keywords, and now structural integrity patterns.
-        """
-        if not text or len(text) < 200:
+        """Basic quality check: minimum length and presence of keyword groups or currency symbols."""
+        settings = get_settings()
+        if not text or len(text) < settings.OCR_TEXT_MIN_CHARS:
             return False
 
-        # --- Keyword Check (existing logic) ---
-        required_keywords = ["invoice", "total", "factuur", "totaal"]
         text_lower = text.lower()
-        if not any(keyword in text_lower for keyword in required_keywords):
-            if not any(symbol in text for symbol in ["€", "$", "£"]):
-                return False
+        groups = self._parse_keyword_groups()
+        if not groups:
+            return True
 
-        # --- Character Ratio Check (existing logic) ---
-        alpha_chars = 0
-        non_alpha_numeric_chars = 0
-        for char in text:
-            if char.isalpha():
-                alpha_chars += 1
-            elif not char.isspace() and not char.isnumeric():
-                non_alpha_numeric_chars += 1
-        
-        if alpha_chars == 0:
-            return False
+        # A currency symbol can satisfy the monetary group (last group) if present
+        currency_present = any(sym in text for sym in ["€", "$", "£"])
 
-        badness_ratio = non_alpha_numeric_chars / alpha_chars
-        if badness_ratio > 0.3:
-            return False
+        satisfied = []
+        for i, grp in enumerate(groups):
+            if any(tok in text_lower for tok in grp):
+                satisfied.append(True)
+            else:
+                # If it's the last group, allow currency as fallback
+                if i == len(groups) - 1 and currency_present:
+                    satisfied.append(True)
+                else:
+                    satisfied.append(False)
 
-        # --- NEW: Structural Pattern Check for CSV-like lines ---
-        # Heuristic: If many lines look like CSV data, the text layer is likely bad.
-        lines = text.splitlines()
-        # To keep this check fast, we only sample the first 50 lines.
-        sample_lines = lines[:50]
-        csv_like_line_count = 0
-        for line in sample_lines:
-            # Check for lines that start with a quote and contain a comma
-            # which is a strong signal of a poorly extracted text layer.
-            if line.strip().startswith('"') and "," in line:
-                csv_like_line_count += 1
-        
-        # If more than 20% of the sampled lines look like CSV, fail the check.
-        if len(sample_lines) > 0 and (csv_like_line_count / len(sample_lines)) > 0.2:
-            return False
-
-        return True
+        return all(satisfied)
 
     def _ocr_sync(self, gcs_uri: str, page_count: int) -> OcrResult:
         """Synchronous Vision OCR for small PDFs (returns result directly)."""
@@ -158,19 +135,15 @@ class VisionService:
         response = self._vision.batch_annotate_files(requests=[request])
 
         full_text: List[str] = []
-        page_texts: List[str] = []
         pages = 0
         for file_resp in response.responses:
             for img_resp in getattr(file_resp, "responses", []) or []:
                 fta = getattr(img_resp, "full_text_annotation", None)
                 if fta and getattr(fta, "text", None):
                     full_text.append(fta.text)
-                    page_texts.append(fta.text)
-                else:
-                    page_texts.append("")
                 pages += 1
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=pages or page_count, method="vision_sync", page_texts=page_texts)
+        return OcrResult(text="\n".join(full_text).strip(), pages=pages or page_count, method="vision_sync")
 
     def _ocr_async(self, gcs_uri: str, temp_prefix: str, batch_size: int = 20) -> OcrResult:
         """Asynchronous Vision OCR for larger PDFs (writes outputs to GCS, then aggregates)."""
@@ -193,7 +166,6 @@ class VisionService:
         blobs = list(self._storage.list_blobs(self._bucket.name, prefix=prefix_path))
 
         full_text: List[str] = []
-        page_texts: List[str] = []
         page_total = 0
         for b in blobs:
             data = b.download_as_bytes()
@@ -202,9 +174,6 @@ class VisionService:
                 fta = r.get("fullTextAnnotation")
                 if fta and "text" in fta:
                     full_text.append(fta["text"])
-                    page_texts.append(fta["text"]) 
-                else:
-                    page_texts.append("")
                 page_total += 1
 
         # Cleanup temporary OCR outputs
@@ -214,4 +183,4 @@ class VisionService:
             except Exception:
                 pass
 
-        return OcrResult(text="\n".join(full_text).strip(), pages=page_total, method="vision_async", page_texts=page_texts)
+        return OcrResult(text="\n".join(full_text).strip(), pages=page_total, method="vision_async")

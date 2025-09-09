@@ -50,13 +50,6 @@ class Settings:
     OCR_PYPDF_MAX_PAGES: int
     OCR_TEXT_MIN_CHARS: int
     OCR_TEXT_KEYWORDS: str  # semicolon-separated groups of keywords; groups use '|' for synonyms
-    # Preprocessor (page/line filtering)
-    PREPROC_MIN_PAGES_TO_FILTER: int
-    PREPROC_PAGE_KEYWORDS: str
-    PREPROC_LINE_KEYWORDS: str
-    PREPROC_DATE_REGEX: str
-    PREPROC_AMOUNT_REGEX: str
-    PREPROC_MAX_CHARS: int
 
     # Retention
     RETENTION_HOURS: int
@@ -102,20 +95,6 @@ class Settings:
             "OCR_TEXT_KEYWORDS",
             "invoice|factuur;total|totaal|bedrag|omschrijving|prijs",
         )
-
-        # Preprocessor (page/line filtering)
-        self.PREPROC_MIN_PAGES_TO_FILTER = int(os.getenv("PREPROC_MIN_PAGES_TO_FILTER", "3"))
-        self.PREPROC_PAGE_KEYWORDS = os.getenv(
-            "PREPROC_PAGE_KEYWORDS",
-            r"invoice|factuur|total|totaal|vat|amount|bedrag|omschrijving|prijs|€|\$|£",
-        )
-        self.PREPROC_LINE_KEYWORDS = os.getenv(
-            "PREPROC_LINE_KEYWORDS",
-            r"invoice|factuur|total|totaal|vat|amount|bedrag|eur|usd|\$|£|item|date|omschrijving|prijs",
-        )
-        self.PREPROC_DATE_REGEX = os.getenv("PREPROC_DATE_REGEX", r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b")
-        self.PREPROC_AMOUNT_REGEX = os.getenv("PREPROC_AMOUNT_REGEX", r"\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})\b")
-        self.PREPROC_MAX_CHARS = int(os.getenv("PREPROC_MAX_CHARS", "20000"))
 
         # Retention
         self.RETENTION_HOURS = int(os.getenv("RETENTION_HOURS", "24"))
