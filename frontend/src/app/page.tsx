@@ -112,8 +112,13 @@ export default function Home() {
               const disp = toDisplay(detail);
               if (disp) {
                 setResults((prev: InvoiceDisplay[]) => {
-                  const exists = prev.some((r: InvoiceDisplay) => r.jobId === disp.jobId);
-                  return exists ? prev : [disp, ...prev];
+                  const idx = prev.findIndex((r: InvoiceDisplay) => r.jobId === disp.jobId);
+                  if (idx >= 0) {
+                    const next = [...prev];
+                    next[idx] = { ...next[idx], ...disp };
+                    return next;
+                  }
+                  return [disp, ...prev];
                 });
               }
             }, 500);
@@ -141,8 +146,13 @@ export default function Home() {
             const disp = toDisplay(detail);
             if (disp) {
               setResults((prev: InvoiceDisplay[]) => {
-                const exists = prev.some((r: InvoiceDisplay) => r.jobId === disp.jobId);
-                return exists ? prev : [disp, ...prev];
+                const idx = prev.findIndex((r: InvoiceDisplay) => r.jobId === disp.jobId);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = { ...next[idx], ...disp };
+                  return next;
+                }
+                return [disp, ...prev];
               });
             }
           } else if (detail.status === 'failed') {
@@ -202,8 +212,13 @@ export default function Home() {
                 const disp = toDisplay(d);
                 if (disp) {
                   setResults((prev: InvoiceDisplay[]) => {
-                    const exists = prev.some((r: InvoiceDisplay) => r.jobId === disp.jobId);
-                    return exists ? prev : [disp, ...prev];
+                    const idx = prev.findIndex((r: InvoiceDisplay) => r.jobId === disp.jobId);
+                    if (idx >= 0) {
+                      const next = [...prev];
+                      next[idx] = { ...next[idx], ...disp };
+                      return next;
+                    }
+                    return [disp, ...prev];
                   });
                 }
               } else if (d.status !== 'failed') {

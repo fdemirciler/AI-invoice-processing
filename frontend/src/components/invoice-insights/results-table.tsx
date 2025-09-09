@@ -55,6 +55,10 @@ export function ResultsTable({ results, onExport }: ResultsTableProps) {
   const formatCurrency = (amount: number | undefined, code?: string) => {
     if (typeof amount !== 'number') return '';
     const currency = (code || 'EUR').toUpperCase();
+    const symbols: Record<string, string> = { EUR: '€', USD: '$', GBP: '£' };
+    if (symbols[currency]) {
+      return `${symbols[currency]}${amount.toFixed(2)}`;
+    }
     try {
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
