@@ -50,16 +50,7 @@ class VisionService:
         if page_count is None:
             return self._ocr_async(gcs_uri, temp_prefix, batch_size=batch_size)
 
-        # 1) Try PyPDF text layer for small-ish PDFs
-        if page_count <= settings.OCR_PYPDF_MAX_PAGES:
-            try:
-                pypdf_res = self._try_extract_text_layer(gcs_uri, page_count)
-                if self._is_text_quality_sufficient(pypdf_res.text):
-                    pypdf_res.method = "pypdf"
-                    return pypdf_res
-            except Exception:
-                # Ignore and continue to OCR paths
-                pass
+        # 1) PyPDF text layer is removed due to unsatisfactory results
 
         # 2) Use synchronous Vision OCR for short scans
         if page_count <= settings.OCR_SYNC_MAX_PAGES:
@@ -68,61 +59,8 @@ class VisionService:
         # 3) Fall back to async for longer scans
         return self._ocr_async(gcs_uri, temp_prefix, batch_size=batch_size)
 
-    # --- Helpers ---
-    def _try_extract_text_layer(self, gcs_uri: str, page_count: int) -> OcrResult:
-        """Extract text layer with PyPDF if present (downloads the PDF)."""
-        blob_path = gcs_uri.replace(f"gs://{self._bucket.name}/", "")
-        blob = self._bucket.blob(blob_path)
-        pdf_bytes = blob.download_as_bytes()
-
-        reader = PdfReader(io.BytesIO(pdf_bytes))
-        full_text: List[str] = []
-        for page in reader.pages:
-            try:
-                full_text.append(page.extract_text() or "")
-            except Exception:
-                full_text.append("")
-
-        return OcrResult(text="\n".join(full_text).strip(), pages=page_count, method="pypdf")
-
-    def _parse_keyword_groups(self) -> List[List[str]]:
-        settings = get_settings()
-        raw = settings.OCR_TEXT_KEYWORDS.strip()
-        groups: List[List[str]] = []
-        if not raw:
-            return groups
-        for grp in raw.split(";"):
-            tokens = [t.strip().lower() for t in grp.split("|") if t.strip()]
-            if tokens:
-                groups.append(tokens)
-        return groups
-
-    def _is_text_quality_sufficient(self, text: str) -> bool:
-        """Basic quality check: minimum length and presence of keyword groups or currency symbols."""
-        settings = get_settings()
-        if not text or len(text) < settings.OCR_TEXT_MIN_CHARS:
-            return False
-
-        text_lower = text.lower()
-        groups = self._parse_keyword_groups()
-        if not groups:
-            return True
-
-        # A currency symbol can satisfy the monetary group (last group) if present
-        currency_present = any(sym in text for sym in ["€", "$", "£"])
-
-        satisfied = []
-        for i, grp in enumerate(groups):
-            if any(tok in text_lower for tok in grp):
-                satisfied.append(True)
-            else:
-                # If it's the last group, allow currency as fallback
-                if i == len(groups) - 1 and currency_present:
-                    satisfied.append(True)
-                else:
-                    satisfied.append(False)
-
-        return all(satisfied)
+    
+    # --- extractors ---
 
     def _ocr_sync(self, gcs_uri: str, page_count: int) -> OcrResult:
         """Synchronous Vision OCR for small PDFs (returns result directly)."""
