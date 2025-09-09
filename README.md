@@ -52,8 +52,7 @@ and old sessions are automatically purged after a short retention window.
   (`sessionId`, `status`, `createdAt DESC`), which scales better than sorting in code.
 - Resilient workers: A stale‑lock takeover lets a healthy worker reclaim jobs stuck in `processing` if another
   worker crashes. We also send light “heartbeats” during long stages so you can observe progress.
-- Tiered OCR: Tries a PDF text layer first (PyPDF) and skips OCR if quality is sufficient; otherwise uses
-  synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
+- Tiered OCR: synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
 
 ## Local Development
 

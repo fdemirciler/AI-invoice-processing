@@ -114,7 +114,7 @@ export function ResultsTable({ results, onExport }: ResultsTableProps) {
                 <FileSpreadsheet className="w-5 h-5" />
                 Invoice Data
             </CardTitle>
-          <CardDescription>Review and export the data extracted from your invoices.</CardDescription>
+          <CardDescription>Review the highlights and export the full data extracted from your invoices.</CardDescription>
         </div>
         <Button onClick={handleExport} disabled={results.length === 0} size="sm">
           <Download className="mr-2 h-4 w-4" />

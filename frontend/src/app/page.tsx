@@ -411,6 +411,21 @@ export default function Home() {
                   </TooltipTrigger>
                   <TooltipContent>restart session</TooltipContent>
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <a
+                      href="https://github.com/fdemirciler/AI-invoice-processing"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Open GitHub repository"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-primary/20"
+                      title="GitHub"
+                    >
+                      <img src="/github-logo.svg" alt="GitHub" className="h-5 w-5" />
+                    </a>
+                  </TooltipTrigger>
+                  <TooltipContent>GitHub</TooltipContent>
+                </Tooltip>
               </div>
             </TooltipProvider>
           </div>
