@@ -22,6 +22,7 @@ function toDisplay(detail: JobDetail): InvoiceDisplay | null {
       vendorName: r.vendorName,
       invoiceDate: typeof r.invoiceDate === 'string' ? r.invoiceDate : new Date(r.invoiceDate).toISOString().slice(0, 10),
       total: Number(r.total ?? 0),
+      currency: typeof r.currency === 'string' ? r.currency.toUpperCase() : undefined,
       jobId: detail.jobId,
     };
   } catch {

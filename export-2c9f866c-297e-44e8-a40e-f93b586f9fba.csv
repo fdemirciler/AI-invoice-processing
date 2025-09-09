@@ -1,0 +1,4 @@
+invoiceNumber,invoiceDate,vendorName,currency,subtotal,tax,total,dueDate,lineItemIndex,description,quantity,unitPrice,lineTotal,confidenceScore,filename
+1030030001851684,2025-01-05,Sixt B.V.,EUR,7.46,1.54,9.0,,1,Unlock fee,1.0,0.83,0.83,1.0,Factuur3.pdf
+1030030001851684,2025-01-05,Sixt B.V.,EUR,7.46,1.54,9.0,,2,A1 bestuurder: Rijden (min),16.0,0.34,5.43,1.0,Factuur3.pdf
+1030030001851684,2025-01-05,Sixt B.V.,EUR,7.46,1.54,9.0,,3,A1 Beschermingsoptie,16.0,0.08,1.2,1.0,Factuur3.pdf

@@ -55,5 +55,6 @@ export interface InvoiceDisplay {
   vendorName: string;
   invoiceDate: string; // ISO string
   total: number;
+  currency?: string; // ISO currency code from LLM/backend (e.g., EUR, USD)
   jobId?: string;
 }

@@ -52,6 +52,23 @@ export function ResultsTable({ results, onExport }: ResultsTableProps) {
     setSortConfig({ key, direction });
   };
 
+  const formatCurrency = (amount: number | undefined, code?: string) => {
+    if (typeof amount !== 'number') return '';
+    const currency = (code || 'EUR').toUpperCase();
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency,
+        currencyDisplay: 'symbol',
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      }).format(amount);
+    } catch {
+      // Fallback if code is unknown
+      return `${currency} ${amount.toFixed(2)}`;
+    }
+  };
+
   const getSortIndicator = (key: SortKey) => {
     if (!sortConfig || sortConfig.key !== key) {
       return <ArrowUpDown className="ml-2 h-4 w-4 opacity-30" />;
@@ -127,7 +144,7 @@ export function ResultsTable({ results, onExport }: ResultsTableProps) {
                     <TableCell style={{fontSize: '12px'}}>{item.vendorName}</TableCell>
                     <TableCell style={{fontSize: '12px'}}>{item.invoiceDate}</TableCell>
                     <TableCell className="text-right" style={{fontSize: '12px'}}>
-                      {typeof item.total === 'number' ? `$${item.total.toFixed(2)}` : ''}
+                      {formatCurrency(item.total, item.currency)}
                     </TableCell>
                   </TableRow>
                 ))
