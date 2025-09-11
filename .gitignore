@@ -191,7 +191,7 @@ Thumbs.db
 backend/.env.*
 
 # Downloaded or exported logs/snapshots at repo root
-downloaded-logs-*.json
+# downloaded-logs-*.json
 
 # Common Python/Poetry extras at repo root (if created accidentally)
 .python-version

@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any, Dict, Optional
+import os
 
 import httpx
 from tenacity import (
@@ -44,6 +45,13 @@ JSON_INSTRUCTIONS = (
 class LLMService:
     def __init__(self) -> None:
         self.settings = get_settings()
+        # Read max output tokens from env without modifying global settings
+        try:
+            mot = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "4096"))
+            # Clamp to a reasonable range to avoid provider errors
+            self.max_output_tokens = max(256, min(8192, mot))
+        except Exception:
+            self.max_output_tokens = 4096
 
     def _gemini_url(self) -> str:
         model = self.settings.GEMINI_MODEL or "gemini-2.5-flash"
@@ -88,7 +96,7 @@ class LLMService:
             ],
             "generationConfig": {
                 "temperature": 0.2,
-                "maxOutputTokens": 2048,
+                "maxOutputTokens": self.max_output_tokens,
                 "responseMimeType": "application/json",
             },
         }
@@ -120,6 +128,7 @@ class LLMService:
                 {"role": "user", "content": text[:12000]},
             ],
             "temperature": 0.2,
+            "max_tokens": self.max_output_tokens,
         }
         data = await self._post_json(self._openrouter_url(), headers=headers, payload=payload)
         try:
