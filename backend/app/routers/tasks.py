@@ -23,6 +23,7 @@ from ..services.firestore import FirestoreService
 from ..services.gcs import GCSService
 from ..services.llm import LLMService
 from ..services.vision import VisionService
+from ..services.preprocess.preprocessor import PreprocessorService, PreprocessResult
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])  # mounted under /api
 logger = logging.getLogger(__name__)
@@ -134,6 +135,7 @@ async def process_task(
             temp_prefix=temp_prefix,
             batch_size=min(page_count, settings.MAX_PAGES),
             page_count=page_count,
+            return_annotations=settings.PREPROCESS_ENABLED,
         )
         try:
             store.update_job(job_id, {"ocrMethod": ocr.method})
@@ -145,8 +147,25 @@ async def process_task(
         except Exception:
             pass
 
-        # Preprocess text
-        text_norm = _normalize_text(ocr.text)
+        # Preprocess text (Vision-only). If enabled, build payload from annotations; else, use OCR text.
+        payload = ocr.text
+        preproc_stats = {"enabled": False, "tableDetected": False, "reduction": 0.0}
+        if settings.PREPROCESS_ENABLED:
+            pp = PreprocessorService()
+            try:
+                res: PreprocessResult = pp.process(ocr.annotations or [])
+                if res and res.text:
+                    preproc_stats["enabled"] = True
+                    preproc_stats["tableDetected"] = bool(res.table_detected)
+                    # compute token/char reduction relative to raw OCR text
+                    base = max(1, len(ocr.text))
+                    preproc_stats["reduction"] = round(max(0.0, 1.0 - (len(res.text) / float(base))), 3)
+                    payload = res.text
+            except Exception:
+                # On any preprocessing failure, fallback silently to OCR text
+                pass
+
+        text_norm = _normalize_text(payload)
 
         # LLM extraction stage
         store.set_job_status(job_id, "llm", "llm")
@@ -174,6 +193,11 @@ async def process_task(
             result_json=invoice.model_dump(mode="json"),
             confidence=confidence,
         )
+        # Save lightweight preprocessing stats only (no payload storage)
+        try:
+            store.update_job(job_id, {"preprocess": preproc_stats})
+        except Exception:
+            pass
 
         # Cleanup input PDF (best-effort)
         try:

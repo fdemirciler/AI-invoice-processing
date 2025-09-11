@@ -52,7 +52,8 @@ and old sessions are automatically purged after a short retention window.
   (`sessionId`, `status`, `createdAt DESC`), which scales better than sorting in code.
 - Resilient workers: A stale‑lock takeover lets a healthy worker reclaim jobs stuck in `processing` if another
   worker crashes. We also send light “heartbeats” during long stages so you can observe progress.
-- Tiered OCR: synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
+- Tiered OCR: Vision-only. Uses synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
+- Preprocessing (Vision-only): Adaptive DOM-based cleaning and optional table summarization with safe fallbacks to reduce tokens before LLM.
 
 ## Local Development
 
@@ -110,6 +111,19 @@ Environment variables (defaults shown):
 - OCR_PYPDF_MAX_PAGES=10
 - OCR_TEXT_MIN_CHARS=200
 - OCR_TEXT_KEYWORDS=invoice|factuur;total|totaal|bedrag|omschrijving|prijs
+
+# Preprocessing (Vision-only)
+- PREPROCESS_ENABLED=true
+- PREPROCESS_FORCE_VISION=true
+- PREPROCESS_GLOBAL_CONF_MIN=0.5
+- PREPROCESS_HEADER_CONF_MIN=0.7
+- PREPROCESS_BODY_CONF_MIN=0.7
+- PREPROCESS_FOOTER_CONF_MIN=0.4
+- PREPROCESS_ZONE_GAP_MIN_RATIO=0.06
+- PREPROCESS_TABLE_MIN_ROWS=4
+- PREPROCESS_TABLE_MIN_COLS=3
+- PREPROCESS_TABLE_HEADER_KEYWORDS=description|omschrijving;quantity|aantal;price|prijs;total|totaal|bedrag
+- PREPROCESS_MAX_CHARS=20000
 
 # Retention
 - RETENTION_HOURS=24

@@ -201,3 +201,5 @@ poetry.lock
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+
+preprocessing_stage_plan.md

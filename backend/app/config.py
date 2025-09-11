@@ -59,6 +59,19 @@ class Settings:
     # Locks
     LOCK_STALE_MINUTES: int
 
+    # Preprocessing
+    PREPROCESS_ENABLED: bool
+    PREPROCESS_FORCE_VISION: bool
+    PREPROCESS_GLOBAL_CONF_MIN: float
+    PREPROCESS_HEADER_CONF_MIN: float
+    PREPROCESS_BODY_CONF_MIN: float
+    PREPROCESS_FOOTER_CONF_MIN: float
+    PREPROCESS_ZONE_GAP_MIN_RATIO: float
+    PREPROCESS_TABLE_MIN_ROWS: int
+    PREPROCESS_TABLE_MIN_COLS: int
+    PREPROCESS_TABLE_HEADER_KEYWORDS: str
+    PREPROCESS_MAX_CHARS: int
+
     def __init__(self) -> None:
         # Load .env once (supports parent directories)
         load_dotenv(find_dotenv(), override=False)
@@ -103,6 +116,22 @@ class Settings:
 
         # Locks
         self.LOCK_STALE_MINUTES = int(os.getenv("LOCK_STALE_MINUTES", "15"))
+
+        # Preprocessing (Vision-only)
+        self.PREPROCESS_ENABLED = os.getenv("PREPROCESS_ENABLED", "true").lower() == "true"
+        self.PREPROCESS_FORCE_VISION = os.getenv("PREPROCESS_FORCE_VISION", "true").lower() == "true"
+        self.PREPROCESS_GLOBAL_CONF_MIN = float(os.getenv("PREPROCESS_GLOBAL_CONF_MIN", "0.5"))
+        self.PREPROCESS_HEADER_CONF_MIN = float(os.getenv("PREPROCESS_HEADER_CONF_MIN", "0.7"))
+        self.PREPROCESS_BODY_CONF_MIN = float(os.getenv("PREPROCESS_BODY_CONF_MIN", "0.7"))
+        self.PREPROCESS_FOOTER_CONF_MIN = float(os.getenv("PREPROCESS_FOOTER_CONF_MIN", "0.4"))
+        self.PREPROCESS_ZONE_GAP_MIN_RATIO = float(os.getenv("PREPROCESS_ZONE_GAP_MIN_RATIO", "0.06"))
+        self.PREPROCESS_TABLE_MIN_ROWS = int(os.getenv("PREPROCESS_TABLE_MIN_ROWS", "4"))
+        self.PREPROCESS_TABLE_MIN_COLS = int(os.getenv("PREPROCESS_TABLE_MIN_COLS", "3"))
+        self.PREPROCESS_TABLE_HEADER_KEYWORDS = os.getenv(
+            "PREPROCESS_TABLE_HEADER_KEYWORDS",
+            "description|omschrijving;quantity|aantal;price|prijs;total|totaal|bedrag",
+        )
+        self.PREPROCESS_MAX_CHARS = int(os.getenv("PREPROCESS_MAX_CHARS", "20000"))
 
     @staticmethod
     def _get_list(name: str, default: str = "") -> List[str]:
