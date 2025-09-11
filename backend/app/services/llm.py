@@ -34,11 +34,23 @@ def _is_retryable(exc: Exception) -> bool:  # pragma: no cover - simple predicat
     return False
 
 JSON_INSTRUCTIONS = (
-    "You are an information extraction engine. Extract invoice data as strict JSON with keys: "
-    "invoiceNumber (string), invoiceDate (YYYY-MM-DD), vendorName (string), currency (ISO code), "
+    "You are an expert invoice extraction engine. Input text is OCR of an invoice and may be English or Dutch (Nederlands). "
+    "It may be PREPROCESSED and contain a summary marker like '...[N line items summarized]...'. "
+    "Extract a single strict JSON object with keys: "
+    "invoiceNumber (string), invoiceDate (YYYY-MM-DD), vendorName (string), currency (3-letter ISO), "
     "subtotal (number), tax (number), total (number), dueDate (YYYY-MM-DD or null), "
     "lineItems (array of {description, quantity, unitPrice, lineTotal}), notes (optional). "
-    "Return ONLY JSON. No markdown, no prose."
+    "Rules: "
+    "- If the summary marker '...[N line items summarized]...' is present, DO NOT attempt to reconstruct items; set lineItems to []. "
+    "- Map Dutch terms to schema keys: 'Factuurnummer'/'Factuurnr.' -> invoiceNumber; 'Factuurdatum' -> invoiceDate; "
+    "  'Vervaldatum' -> dueDate; 'Subtotaal' -> subtotal; 'BTW'/'Omzetbelasting' -> tax; "
+    "  'Totaal'/'Totaalbedrag'/'Te betalen' -> total; 'Omschrijving' -> lineItems.description; "
+    "  'Aantal' -> lineItems.quantity; 'Prijs'/'Eenheidsprijs'/'Tarief' -> lineItems.unitPrice; 'Bedrag' -> lineItems.lineTotal; "
+    "  'Valuta' -> currency. Default currency to EUR if not found. "
+    "- Dates must be YYYY-MM-DD. "
+    "- All numeric fields must be numbers (not strings). Use '.' as decimal separator. "
+    "- Prefer totals explicitly labeled as 'Totaal', 'Total', or 'Balance Due' if multiple candidates exist. "
+    "Return ONLY the JSON object. No markdown, no code fences, no commentary."
 )
 
 

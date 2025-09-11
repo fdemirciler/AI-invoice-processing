@@ -230,11 +230,27 @@ class PreprocessorService:
             interior = interior[1:]
         n_items = len(interior)
         # Extract likely totals lines from all lines (end of body often contains totals)
-        total_lines = []
-        for ln in lines[-10:]:
+        total_lines: List[str] = []
+        # Include a broader multilingual set and allow matches within compound words.
+        # Scan a slightly larger tail window to capture the full totals block and adjacent amount lines.
+        totals_pattern = r"(subtotaal|subtotal|btw|omzetbelasting|tax|totaalbedrag|totaal|grand total|amount due|te betalen|tebetalen|saldo|balance due|balance|total)"
+        amount_pattern = r"(^|\b)(€|eur|usd|gbp)?\s*[+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})\b"
+        tail = lines[-15:]
+        seen: set[str] = set()
+        def add_line(txt: str) -> None:
+            t = txt.strip()
+            if t and t not in seen:
+                total_lines.append(t)
+                seen.add(t)
+        for i, ln in enumerate(tail):
             low = ln.text.lower()
-            if re.search(r"\b(subtotal|btw|tax|totaal|total|amount|bedrag)\b", low):
-                total_lines.append(ln.text.strip())
+            if re.search(totals_pattern, low):
+                add_line(ln.text)
+                # Include adjacent amount lines (label-value or value-only layout)
+                if i + 1 < len(tail) and re.search(amount_pattern, tail[i + 1].text.lower()):
+                    add_line(tail[i + 1].text)
+                if i - 1 >= 0 and re.search(amount_pattern, tail[i - 1].text.lower()):
+                    add_line(tail[i - 1].text)
         parts: List[str] = []
         if header_text:
             parts.append(header_text)
