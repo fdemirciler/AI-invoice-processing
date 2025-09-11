@@ -158,9 +158,11 @@ class PreprocessorService:
             return ""
         y0, y1 = zones[key]
         texts: List[str] = []
+        margin = 0.01  # include lines slightly outside the zone boundary
         for blk in page.blocks:
-            if blk.bbox.y_min >= y0 and blk.bbox.y_max <= y1:
-                for ln in blk.lines:
+            for ln in blk.lines:
+                my = ln.bbox.mid_y
+                if y0 - margin <= my <= y1 + margin:
                     t = ln.text.strip()
                     if t:
                         texts.append(t)
@@ -170,11 +172,14 @@ class PreprocessorService:
         if "body" not in zones:
             return (self._emit_zone_text(page, {"body": (0.0, 1.0)}, "body"), False)
         y0, y1 = zones["body"]
-        # Collect body lines
+        # Collect body lines using line-level mid_y with a small margin to include boundary rows
+        margin = 0.01
         body_lines: List[Line] = []
         for blk in page.blocks:
-            if blk.bbox.y_min >= y0 and blk.bbox.y_max <= y1:
-                body_lines.extend(blk.lines)
+            for ln in blk.lines:
+                my = ln.bbox.mid_y
+                if y0 - margin <= my <= y1 + margin:
+                    body_lines.append(ln)
         # Try table summarization
         summary = self._summarize_table_if_present(body_lines)
         if summary is not None:
@@ -312,7 +317,8 @@ class PreprocessorService:
 
     @staticmethod
     def _sanitize(text: str) -> str:
-        # Collapse whitespace and trim
-        text = re.sub(r"[ \t\f\v]+", " ", text)
-        text = re.sub(r"\s+", " ", text)
-        return text.strip()
+        # Normalize spaces within lines but preserve newlines as row boundaries
+        lines = [re.sub(r"[ \t\f\v]+", " ", ln).strip() for ln in text.splitlines()]
+        # Drop empty lines caused by filtering
+        lines = [ln for ln in lines if ln]
+        return "\n".join(lines)
