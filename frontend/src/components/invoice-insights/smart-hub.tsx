@@ -2,7 +2,7 @@
 
 import type { DragEvent, ChangeEvent } from 'react';
 import React, { useRef } from 'react';
-import { UploadCloud, FileText, Loader2, CheckCircle2, XCircle, RefreshCcw, List } from 'lucide-react';
+import { UploadCloud, FileText, Loader2, CheckCircle2, XCircle, RefreshCcw, List, HelpCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import type { JobStatus, Limits } from '@/types/api';
 
 type SmartHubJob = {
@@ -39,6 +40,11 @@ const formatPages = (pages?: number) => {
   const n = Number(pages);
   if (!Number.isFinite(n)) return '';
   return `${n} ${n === 1 ? 'page' : 'pages'}`;
+};
+
+const truncate = (s?: string, n = 160) => {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
 };
 
 const simpleLabel = (status: JobStatus): 'Queued' | 'Processing' | 'Done' | 'Failed' => {
@@ -299,9 +305,29 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                             <Progress value={progressFromStages(job.stages, job.status)} className="h-2" />
                           </div>
                         ) : (
-                          <p className="mt-2 text-xs text-red-600 dark:text-red-400 break-words">
-                            {job.error ?? 'Processing failed'}
-                          </p>
+                          <div className="mt-2 flex items-start gap-1">
+                            <p className="text-xs text-red-600 dark:text-red-400 break-words flex-1">
+                              {truncate(job.error ?? 'Processing failed')}
+                            </p>
+                            {job.error && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="p-1 text-red-600 dark:text-red-400 hover:opacity-80"
+                                      aria-label="Show error details"
+                                    >
+                                      <HelpCircle className="h-4 w-4" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="max-w-xs whitespace-pre-wrap break-words">
+                                    {job.error}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
                         )}
                     </div>
                     <div className="flex items-center space-x-2">

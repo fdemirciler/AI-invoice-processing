@@ -167,8 +167,6 @@ export default function Home() {
                   : j
               )
             );
-            const errMsg = String((detail as any)?.error || 'Processing failed');
-            toast({ title: 'Processing failed', description: errMsg, variant: 'destructive' as any });
             return;
           } else {
             schedulePoll(jobId, attempt + 1);
@@ -236,9 +234,6 @@ export default function Home() {
                 }
               } else if (d.status !== 'failed') {
                 schedulePoll(j.jobId, 0);
-              } else if (d.status === 'failed') {
-                const errMsg = String((d as any)?.error || 'Processing failed');
-                toast({ title: 'Processing failed', description: errMsg, variant: 'destructive' as any });
               }
             } catch {
               // If getJob fails, schedule polling anyway

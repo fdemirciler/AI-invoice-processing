@@ -85,7 +85,7 @@ Open http://localhost:8080/docs for Swagger UI.
 ## Configuration
 
 Environment variables (defaults shown):
-- CORS_ORIGINS="*"  (comma-separated list)
+- CORS_ORIGINS=["*"  (comma-separated list)](https://ai-invoice-scan.web.app,https://ai-invoice-scan.firebaseapp.com,http://localhost:9002,http://localhost:3000)
 - MAX_FILES=10
 - MAX_SIZE_MB=10
 - MAX_PAGES=20
