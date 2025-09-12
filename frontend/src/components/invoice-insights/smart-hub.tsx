@@ -19,6 +19,7 @@ type SmartHubJob = {
   sizeBytes?: number;
   pageCount?: number;
   stages?: Record<string, string>;
+  error?: string;
 };
 
 interface SmartHubProps {
@@ -288,7 +289,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                               .join(' · ')}
                           </span>
                         </div>
-                        {job.status !== 'failed' && (
+                        {job.status !== 'failed' ? (
                           <div className="mt-2">
                             <div className="flex items-center justify-end mb-1">
                               <span className="text-xs text-muted-foreground">
@@ -297,6 +298,10 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                             </div>
                             <Progress value={progressFromStages(job.stages, job.status)} className="h-2" />
                           </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-red-600 dark:text-red-400 break-words">
+                            {job.error ?? 'Processing failed'}
+                          </p>
                         )}
                     </div>
                     <div className="flex items-center space-x-2">

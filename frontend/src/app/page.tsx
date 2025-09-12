@@ -32,10 +32,12 @@ function toDisplay(detail: JobDetail): InvoiceDisplay | null {
 
 
 // --- Main Component ---
+type UiJob = JobItem & { error?: string };
+
 export default function Home() {
   const [sessionId, setSessionId] = useState<string>('');
   const [limits, setLimits] = useState<Limits | null>(null);
-  const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [jobs, setJobs] = useState<UiJob[]>([]);
   const [results, setResults] = useState<InvoiceDisplay[]>([]);
   const [theme, setTheme] = useState('dark');
   const { toast } = useToast();
@@ -129,7 +131,7 @@ export default function Home() {
               ? ('processing' as JobStatus)
               : (detail.status as JobStatus);
 
-          setJobs((prev: JobItem[]) =>
+          setJobs((prev: UiJob[]) =>
             prev.map((j: JobItem) =>
               j.jobId === jobId
                 ? {
@@ -138,6 +140,7 @@ export default function Home() {
                     stages: detail.stages || j.stages,
                     sizeBytes: (detail as any).sizeBytes ?? (j as any).sizeBytes,
                     pageCount: (detail as any).pageCount ?? (j as any).pageCount,
+                    error: (detail as any).error ?? (j as any).error,
                   }
                 : j
             )
@@ -156,7 +159,16 @@ export default function Home() {
               });
             }
           } else if (detail.status === 'failed') {
-            // stop polling
+            // Capture and surface backend error, then stop polling
+            setJobs((prev: UiJob[]) =>
+              prev.map((j: UiJob) =>
+                j.jobId === jobId
+                  ? { ...j, status: 'failed' as JobStatus, error: (detail as any).error }
+                  : j
+              )
+            );
+            const errMsg = String((detail as any)?.error || 'Processing failed');
+            toast({ title: 'Processing failed', description: errMsg, variant: 'destructive' as any });
             return;
           } else {
             schedulePoll(jobId, attempt + 1);
@@ -195,8 +207,8 @@ export default function Home() {
               const d = await getJob(j.jobId, sessionId);
               if (!isMounted.current) return;
               // Update job with freshest status, stages, and any missing metadata
-              setJobs((prev: JobItem[]) =>
-                prev.map((it: JobItem) =>
+              setJobs((prev: UiJob[]) =>
+                prev.map((it: UiJob) =>
                   it.jobId === j.jobId
                     ? {
                         ...it,
@@ -204,6 +216,7 @@ export default function Home() {
                         stages: d.stages || it.stages,
                         sizeBytes: (d as any).sizeBytes ?? (it as any).sizeBytes,
                         pageCount: (d as any).pageCount ?? (it as any).pageCount,
+                        error: (d as any).error ?? (it as any).error,
                       }
                     : it
                 )
@@ -223,6 +236,9 @@ export default function Home() {
                 }
               } else if (d.status !== 'failed') {
                 schedulePoll(j.jobId, 0);
+              } else if (d.status === 'failed') {
+                const errMsg = String((d as any)?.error || 'Processing failed');
+                toast({ title: 'Processing failed', description: errMsg, variant: 'destructive' as any });
               }
             } catch {
               // If getJob fails, schedule polling anyway
