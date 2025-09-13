@@ -345,7 +345,7 @@ export default function Home() {
         const resp = await createJobs(files, sessionId);
         setJobs((prev: JobItem[]) => [...resp.jobs, ...prev]);
         if (resp.note) {
-          toast({ title: 'Notice', description: resp.note });
+          toast({ title: 'Notice', description: resp.note, duration: 5000 });
         }
         resp.jobs.forEach((j) => {
           schedulePoll(j.jobId, 0);
@@ -381,7 +381,7 @@ export default function Home() {
           setBannerMsg(composeCountdown(base, until, reset));
           return;
         }
-        toast({ title: 'Upload failed', description: String(err?.message || err), variant: 'destructive' as any });
+        toast({ title: 'Upload failed', description: String(err?.message || err), variant: 'destructive' as any, duration: 5000 });
       }
     },
     [sessionId, schedulePoll, toast, limits, composeCountdown]
@@ -426,7 +426,7 @@ export default function Home() {
           setBannerMsg(composeCountdown(base, until, reset));
           return;
         }
-        toast({ title: 'Retry failed', description: String(err?.message || err), variant: 'destructive' as any });
+        toast({ title: 'Retry failed', description: String(err?.message || err), variant: 'destructive' as any, duration: 5000 });
       }
     },
     [sessionId, schedulePoll, toast, composeCountdown]
@@ -438,13 +438,13 @@ export default function Home() {
       await deleteSession(sessionId);
     } catch (err: any) {
       // proceed even if delete fails, but show feedback
-      toast({ title: 'Session cleanup encountered issues', description: String(err?.message || err) });
+      toast({ title: 'Session cleanup encountered issues', description: String(err?.message || err), variant: 'destructive' as any, duration: 5000 });
     }
     const newSid = resetSessionId();
     setSessionId(newSid);
     setJobs([]);
     setResults([]);
-    toast({ title: 'Session Cleared', description: 'All invoice jobs have been removed.' });
+    toast({ title: 'Session Cleared', description: 'All invoice jobs have been removed.', duration: 5000 });
     // fetch fresh config for new session
     setTimeout(() => {
       // slight delay to ensure session propagated
@@ -455,7 +455,7 @@ export default function Home() {
   const handleExport = useCallback(() => {
     if (!sessionId) return;
     exportCsv(sessionId).catch((err) =>
-      toast({ title: 'Export failed', description: String(err?.message || err), variant: 'destructive' as any })
+      toast({ title: 'Export failed', description: String(err?.message || err), variant: 'destructive' as any, duration: 5000 })
     );
   }, [sessionId, toast]);
 

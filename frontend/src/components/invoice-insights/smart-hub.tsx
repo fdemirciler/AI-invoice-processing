@@ -159,9 +159,10 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
 
     if (limits && files.length > limits.maxFiles) {
       toast({
-        variant: 'destructive',
+        variant: 'warning',
         title: 'Too many files',
         description: `You can only upload a maximum of ${limits.maxFiles} files at a time.`,
+        duration: 5000,
       });
       return;
     }
@@ -172,18 +173,20 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
         : limits.acceptedMime.includes(file.type);
       if (!mimeOk) {
         toast({
-          variant: 'destructive',
+          variant: 'warning',
           title: 'Invalid file type',
           description: `File "${file.name}" is not a PDF.`,
+          duration: 5000,
         });
         continue;
       }
       const maxBytes = (limits?.maxSizeMb ?? 10) * 1024 * 1024;
       if (file.size > maxBytes) {
         toast({
-          variant: 'destructive',
+          variant: 'warning',
           title: 'File too large',
           description: `File "${file.name}" exceeds the ${limits?.maxSizeMb ?? 10}MB size limit.`,
+          duration: 5000,
         });
         continue;
       }
