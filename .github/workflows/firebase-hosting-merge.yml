@@ -25,3 +25,4 @@ jobs:
         env:
           FIREBASE_CLI_EXPERIMENTS: webframeworks
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.API_GATEWAY_BASE_URL }}
+#
