@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
+import { MessageCenter } from '@/components/ui/message-center';
+import { Alert } from '@/components/ui/alert';
 import { Sparkles, Moon, Sun, RefreshCcw, Github } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
@@ -523,12 +525,20 @@ export default function Home() {
 
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
+          <MessageCenter />
+          {bannerMsg && (
+            <Alert variant="warning" role="status" className="mb-4">
+              <div>
+                <div className="text-sm font-medium">{bannerMsg}</div>
+              </div>
+            </Alert>
+          )}
           <SmartHub
             jobs={jobs}
             limits={limits}
             onFilesAdded={handleFilesAdded}
             onRetry={handleRetryJob}
-            bannerText={bannerMsg}
+            bannerText={''}
             disableUpload={disableUpload}
             disableRetry={disableRetry}
           />
