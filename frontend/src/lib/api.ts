@@ -7,6 +7,39 @@ import type {
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api').replace(/\/$/, '');
 
+export type RateLimitInfo = {
+  retryAfterSec: number;
+  resetEpoch?: number;
+  detail?: string;
+};
+
+export class HttpError extends Error {
+  status: number;
+  detail?: string;
+  rateLimit?: RateLimitInfo;
+  constructor(message: string, status: number, detail?: string, rateLimit?: RateLimitInfo) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
+    this.detail = detail;
+    this.rateLimit = rateLimit;
+  }
+}
+
+async function parseRateLimit(res: Response): Promise<HttpError> {
+  const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
+  const resetEpoch = parseInt(res.headers.get('X-RateLimit-Reset') || '0', 10);
+  let detail = '';
+  try {
+    const data = await res.json();
+    detail = typeof (data as any)?.detail === 'string' ? (data as any).detail : JSON.stringify(data);
+  } catch {
+    detail = await res.text();
+  }
+  const rl: RateLimitInfo = { retryAfterSec: Math.max(0, retryAfter || 0), resetEpoch: resetEpoch || undefined, detail };
+  return new HttpError(`rate limited: ${detail || res.statusText}`, 429, detail, rl);
+}
+
 function withSession(headers: HeadersInit, sessionId: string): HeadersInit {
   return {
     ...headers,
@@ -29,8 +62,9 @@ export async function createJobs(files: File[], sessionId: string): Promise<Jobs
     body: fd,
   });
   if (!res.ok) {
+    if (res.status === 429) throw await parseRateLimit(res);
     const msg = await safeError(res);
-    throw new Error(`createJobs failed: ${res.status} ${msg}`);
+    throw new HttpError(`createJobs failed: ${res.status} ${msg}`, res.status, msg);
   }
   return res.json();
 }
@@ -41,8 +75,9 @@ export async function getJob(jobId: string, sessionId: string): Promise<JobDetai
     cache: 'no-store',
   });
   if (!res.ok) {
+    if (res.status === 429) throw await parseRateLimit(res);
     const msg = await safeError(res);
-    throw new Error(`getJob failed: ${res.status} ${msg}`);
+    throw new HttpError(`getJob failed: ${res.status} ${msg}`, res.status, msg);
   }
   return res.json();
 }
@@ -53,8 +88,9 @@ export async function listJobs(sessionId: string): Promise<ListJobsResponse> {
     cache: 'no-store',
   });
   if (!res.ok) {
+    if (res.status === 429) throw await parseRateLimit(res);
     const msg = await safeError(res);
-    throw new Error(`listJobs failed: ${res.status} ${msg}`);
+    throw new HttpError(`listJobs failed: ${res.status} ${msg}`, res.status, msg);
   }
   return res.json();
 }
@@ -65,8 +101,9 @@ export async function retryJob(jobId: string, sessionId: string): Promise<{ jobI
     headers: withSession({}, sessionId),
   });
   if (!res.ok) {
+    if (res.status === 429) throw await parseRateLimit(res);
     const msg = await safeError(res);
-    throw new Error(`retryJob failed: ${res.status} ${msg}`);
+    throw new HttpError(`retryJob failed: ${res.status} ${msg}`, res.status, msg);
   }
   return res.json();
 }
@@ -76,8 +113,9 @@ export async function exportCsv(sessionId: string): Promise<void> {
     headers: withSession({}, sessionId),
   });
   if (!res.ok) {
+    if (res.status === 429) throw await parseRateLimit(res);
     const msg = await safeError(res);
-    throw new Error(`exportCsv failed: ${res.status} ${msg}`);
+    throw new HttpError(`exportCsv failed: ${res.status} ${msg}`, res.status, msg);
   }
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -96,8 +134,9 @@ export async function deleteSession(sessionId: string): Promise<{ sessionId: str
     headers: withSession({}, sessionId),
   });
   if (!res.ok) {
+    if (res.status === 429) throw await parseRateLimit(res);
     const msg = await safeError(res);
-    throw new Error(`deleteSession failed: ${res.status} ${msg}`);
+    throw new HttpError(`deleteSession failed: ${res.status} ${msg}`, res.status, msg);
   }
   return res.json();
 }

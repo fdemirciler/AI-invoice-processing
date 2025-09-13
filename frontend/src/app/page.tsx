@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import { resetSessionId } from '@/lib/session';
 import { getConfig, listJobs, createJobs, getJob, retryJob, deleteSession, exportCsv } from '@/lib/api';
+import type { HttpError } from '@/lib/api';
 import type { Limits, JobItem, JobDetail, InvoiceDisplay, JobStatus } from '@/types/api';
 
 
@@ -44,6 +45,11 @@ export default function Home() {
   const isMounted = useRef(true);
   // Track whether we've seen an active stage for a job, to avoid skipping straight from queued -> done in the UI
   const seenActiveStageRef = useRef<Set<string>>(new Set());
+  // Global banner and control disabling
+  const [bannerMsg, setBannerMsg] = useState<string>('');
+  const [bannerUntil, setBannerUntil] = useState<number | null>(null); // epoch seconds
+  const [disableUpload, setDisableUpload] = useState(false);
+  const [disableRetry, setDisableRetry] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -62,6 +68,46 @@ export default function Home() {
   }, [theme]);
 
   const toggleTheme = () => setTheme((prev: string) => (prev === 'dark' ? 'light' : 'dark'));
+
+  const formatCET = useCallback((epochSec?: number | null) => {
+    if (!epochSec) return '';
+    // CET fixed +1: add 60 minutes to UTC and format HH:mm
+    const date = new Date((epochSec + 60 * 60) * 1000);
+    const hh = String(date.getUTCHours()).padStart(2, '0');
+    const mm = String(date.getUTCMinutes()).padStart(2, '0');
+    return `${hh}:${mm} CET`;
+  }, []);
+
+  // Tick every second for countdown updates while banner is active
+  useEffect(() => {
+    if (!bannerUntil) return;
+    const id = window.setInterval(() => {
+      if (!isMounted.current) return;
+      const now = Math.floor(Date.now() / 1000);
+      if (now >= bannerUntil) {
+        setBannerMsg('');
+        setBannerUntil(null);
+        setDisableUpload(false);
+        setDisableRetry(false);
+        window.clearInterval(id);
+      } else {
+        // keep message updated by re-setting same message (caller composes)
+        setBannerMsg((prev) => prev); // trigger re-render
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [bannerUntil]);
+
+  const composeCountdown = useCallback((base: string, untilEpoch?: number | null, resetEpoch?: number | null) => {
+    const now = Math.floor(Date.now() / 1000);
+    const secs = Math.max(0, (untilEpoch ?? now) - now);
+    const resets = formatCET(resetEpoch ?? untilEpoch ?? null);
+    const parts: string[] = [];
+    parts.push(base);
+    parts.push(`Try again in ${secs}s`);
+    if (resets) parts.push(`Resets at ${resets}`);
+    return parts.join('. ') + '.';
+  }, [formatCET]);
 
   const schedulePoll = useCallback(
     (jobId: string, attempt = 0) => {
@@ -320,10 +366,25 @@ export default function Home() {
           }, 300);
         });
       } catch (err: any) {
+        if ((err as any)?.status === 429) {
+          const he = err as HttpError;
+          const retryAfter = he.rateLimit?.retryAfterSec ?? 0;
+          const until = Math.floor(Date.now() / 1000) + Math.max(0, retryAfter);
+          const reset = he.rateLimit?.resetEpoch ?? until;
+          setDisableUpload(true);
+          setBannerUntil(until);
+          // Daily or global caps have specific copy; others are generic
+          const detail = (he.detail || '').toLowerCase();
+          let base = 'Too many requests';
+          if (detail.includes('daily limit')) base = `Daily job limit reached (${limits?.maxFiles ? 50 : 50})`;
+          if (detail.includes('service is at today')) base = 'Service is at today’s capacity';
+          setBannerMsg(composeCountdown(base, until, reset));
+          return;
+        }
         toast({ title: 'Upload failed', description: String(err?.message || err), variant: 'destructive' as any });
       }
     },
-    [sessionId, schedulePoll, toast]
+    [sessionId, schedulePoll, toast, limits, composeCountdown]
   );
 
   const handleRetryJob = useCallback(
@@ -348,10 +409,27 @@ export default function Home() {
           );
         }, 300);
       } catch (err: any) {
+        if ((err as any)?.status === 429) {
+          const he = err as HttpError;
+          const detail = (he.detail || '').toLowerCase();
+          // Manual retry cap per job (3) -> inline per job messaging is already handled by disabling Retry here globally is not desired
+          if (detail.includes('retry limit')) {
+            // Let the job row reflect failure; do not set global banner
+            return;
+          }
+          const retryAfter = he.rateLimit?.retryAfterSec ?? 0;
+          const until = Math.floor(Date.now() / 1000) + Math.max(0, retryAfter);
+          const reset = he.rateLimit?.resetEpoch ?? until;
+          setDisableRetry(true);
+          setBannerUntil(until);
+          const base = 'Too many requests';
+          setBannerMsg(composeCountdown(base, until, reset));
+          return;
+        }
         toast({ title: 'Retry failed', description: String(err?.message || err), variant: 'destructive' as any });
       }
     },
-    [sessionId, schedulePoll, toast]
+    [sessionId, schedulePoll, toast, composeCountdown]
   );
 
   const handleClearSession = useCallback(async () => {
@@ -445,7 +523,15 @@ export default function Home() {
 
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
-          <SmartHub jobs={jobs} limits={limits} onFilesAdded={handleFilesAdded} onRetry={handleRetryJob} />
+          <SmartHub
+            jobs={jobs}
+            limits={limits}
+            onFilesAdded={handleFilesAdded}
+            onRetry={handleRetryJob}
+            bannerText={bannerMsg}
+            disableUpload={disableUpload}
+            disableRetry={disableRetry}
+          />
           {hasResults && <ResultsTable results={results} onExport={handleExport} />}
         </div>
       </main>

@@ -28,6 +28,9 @@ interface SmartHubProps {
   limits: Limits | null;
   onFilesAdded: (files: File[]) => void;
   onRetry: (jobId: string) => void;
+  bannerText?: string;
+  disableUpload?: boolean;
+  disableRetry?: boolean;
 }
 
 const formatKb = (bytes?: number) => {
@@ -132,7 +135,7 @@ function progressFromStages(stages: Record<string, string> | undefined, status: 
 }
 
 
-export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps) {
+export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disableUpload = false, disableRetry = false }: SmartHubProps) {
   const [isDragActive, setIsDragActive] = React.useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -149,6 +152,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
   
   const validateAndAddFiles = (fileList: FileList | null) => {
     if (!fileList) return;
+    if (disableUpload) return;
 
     const files = Array.from(fileList);
     const validFiles: File[] = [];
@@ -195,11 +199,13 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
     e.preventDefault();
     e.stopPropagation();
     setIsDragActive(false);
+    if (disableUpload) return;
     validateAndAddFiles(e.dataTransfer.files);
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
+    if (disableUpload) return;
     validateAndAddFiles(e.target.files);
      if (e.target) {
       e.target.value = '';
@@ -207,6 +213,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
   };
   
   const onButtonClick = () => {
+    if (disableUpload) return;
     inputRef.current?.click();
   };
   
@@ -227,6 +234,15 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {bannerText && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 text-yellow-900 dark:bg-yellow-900/20 dark:text-yellow-200 px-3 py-2 text-sm"
+          >
+            {bannerText}
+          </div>
+        )}
         {jobs.length === 0 ? (
             <form 
               className="w-full"
@@ -240,17 +256,20 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                 multiple={true}
                 onChange={handleChange}
                 accept="application/pdf"
+                disabled={disableUpload}
               />
               <div
                 className={cn(
                   "relative flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer bg-card hover:bg-muted transition-colors duration-300",
                   isDragActive ? "border-primary" : "border-border",
+                  disableUpload && "opacity-60 cursor-not-allowed"
                 )}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
                 onClick={onButtonClick}
+                aria-disabled={disableUpload}
               >
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <UploadCloud className={cn("w-10 h-10 mb-4 text-muted-foreground", isDragActive && "text-primary")} />
@@ -338,6 +357,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry }: SmartHubProps)
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => onRetry(job.jobId)}
+                            disabled={disableRetry}
                             aria-label={`Retry processing ${job.filename}`}
                         >
                             <RefreshCcw className="h-4 w-4" />

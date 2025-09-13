@@ -72,6 +72,18 @@ class Settings:
     PREPROCESS_TABLE_HEADER_KEYWORDS: str
     PREPROCESS_MAX_CHARS: int
 
+    # Rate limiting / quotas
+    RL_ENABLED: bool
+    RL_JOBS_PER_MIN_CAP: int
+    RL_FILES_PER_MIN_CAP: int
+    RL_RETRY_PER_MIN_CAP: int
+    RL_DAILY_PER_SESSION: int
+    RL_DAILY_GLOBAL: int
+    RL_USE_IP_FALLBACK: bool
+    RL_IP_PER_MIN_CAP: int
+    RL_HEADER_KEY: str
+    RL_TZ_OFFSET_MINUTES: int
+
     def __init__(self) -> None:
         # Load .env once (supports parent directories)
         load_dotenv(find_dotenv(), override=False)
@@ -132,6 +144,19 @@ class Settings:
             "description|omschrijving;quantity|aantal;price|prijs;total|totaal|bedrag",
         )
         self.PREPROCESS_MAX_CHARS = int(os.getenv("PREPROCESS_MAX_CHARS", "20000"))
+
+        # Rate limiting / quotas (defaults are conservative; override in env)
+        self.RL_ENABLED = os.getenv("RL_ENABLED", "true").lower() == "true"
+        self.RL_JOBS_PER_MIN_CAP = int(os.getenv("RL_JOBS_PER_MIN_CAP", "5"))
+        self.RL_FILES_PER_MIN_CAP = int(os.getenv("RL_FILES_PER_MIN_CAP", "20"))
+        self.RL_RETRY_PER_MIN_CAP = int(os.getenv("RL_RETRY_PER_MIN_CAP", "5"))
+        self.RL_DAILY_PER_SESSION = int(os.getenv("RL_DAILY_PER_SESSION", "50"))
+        self.RL_DAILY_GLOBAL = int(os.getenv("RL_DAILY_GLOBAL", "250"))
+        self.RL_USE_IP_FALLBACK = os.getenv("RL_USE_IP_FALLBACK", "true").lower() == "true"
+        self.RL_IP_PER_MIN_CAP = int(os.getenv("RL_IP_PER_MIN_CAP", "60"))
+        self.RL_HEADER_KEY = os.getenv("RL_HEADER_KEY", "X-Session-Id")
+        # CET fixed +1 minute offset (ignore DST) unless overridden
+        self.RL_TZ_OFFSET_MINUTES = int(os.getenv("RL_TZ_OFFSET_MINUTES", "60"))
 
     @staticmethod
     def _get_list(name: str, default: str = "") -> List[str]:

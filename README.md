@@ -8,7 +8,7 @@ AI-powered invoice processing workflow that turns invoices in PDFs into structur
 - Results appear in a table; you can export them to CSV.
 
 ## How it works
-1) Frontend sends `POST /api/jobs` with your PDFs.
+1) Frontend calls the API via Google Cloud API Gateway (e.g., `https://<gateway-host>/api/...`).
 2) Backend uploads files to Cloud Storage and creates job records in Firestore.
 3) A background worker (Cloud Tasks + OIDC) triggers OCR with Vision, then parses
    the text using Gemini (primary) or OpenRouter (fallback).
@@ -18,8 +18,8 @@ AI-powered invoice processing workflow that turns invoices in PDFs into structur
 ![Workflow](diagram.png)
 
 ## Tech stack
-- Frontend: Next.js on Firebase Hosting (same-origin `/api` rewrite)
-- Backend: FastAPI on Cloud Run (public for app endpoints; worker secured by OIDC)
+- Frontend: Next.js on Firebase Hosting. Calls API via Google Cloud API Gateway (`NEXT_PUBLIC_API_BASE_URL`). Firebase Hosting `/api` rewrite has been removed.
+- Backend: FastAPI on Cloud Run (requires authentication). Public entrypoint is API Gateway; Cloud Run only accepts calls from API Gateway SA and Cloud Tasks SA.
 - Storage & DB: Cloud Storage (PDFs), Firestore (jobs + results)
 - Queue/Async: Cloud Tasks
 - OCR & AI: Google Cloud Vision OCR, Gemini; OpenRouter as fallback LLM
@@ -44,6 +44,25 @@ We keep things simple and respectful of your data.
 
 Bottom line: no processed data is kept on the server once you end your session or hit refresh/clear,
 and old sessions are automatically purged after a short retention window.
+
+## Production configuration (summary)
+
+- API Gateway is the public entrypoint. Cloud Run requires authentication and accepts calls only from:
+  - API Gateway service account (frontend traffic)
+  - Cloud Tasks service account (worker calls)
+- Frontend reads `NEXT_PUBLIC_API_BASE_URL` (set via GitHub Actions secret `API_GATEWAY_BASE_URL`).
+- Firebase Hosting `/api` rewrite has been removed; the frontend calls the Gateway host directly.
+
+## Rate limiting & UX
+
+- App-level limits (configurable via `RL_*` in backend):
+  - Per-session: jobs/min, files/min, retries/min
+  - Daily caps: per-session and global (CET fixed +1 for reset)
+  - Optional per-IP backstop
+- 429 responses include `Retry-After` and `X-RateLimit-*` headers.
+- Frontend shows a neutral inline banner with a countdown and CET reset time.
+- Only the affected control is disabled during cooldown (Upload or Retry).
+- Manual retry cap per job: 3 (further retries are rejected).
 
 ## Reliability & performance
 

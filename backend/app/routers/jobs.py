@@ -1,4 +1,9 @@
-"""Jobs router: upload PDFs, create job records, and enqueue processing tasks."""
+"""Jobs router: upload PDFs, create job records, and enqueue processing tasks.
+
+Includes application-level rate limiting and retry caps:
+- Per-session/per-IP rate limiting enforced via RateLimiterService.
+- Manual retries are limited to 3 per job (separate from Cloud Tasks automatic retries).
+"""
 from __future__ import annotations
 
 import asyncio
@@ -7,20 +12,38 @@ import csv
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Request
 from fastapi.responses import StreamingResponse
 from pypdf import PdfReader
 from google.cloud import firestore
+from google.cloud.firestore_v1 import Increment
 
 from ..config import get_settings
 from ..deps import get_session_id
 from ..models import JobItem, JobsCreateResponse, Limits, Invoice
 from ..services.firestore import FirestoreService
+from ..services.rate_limit import RateLimiterService
 from ..services.gcs import GCSService
 from ..services.tasks import CloudTasksService, TasksConfig
 from .tasks import process_task as process_job_task
 
 router = APIRouter(tags=["jobs"])
+
+
+def _get_client_ip(request: Request) -> str:
+    """Best-effort client IP extraction (for coarse per-IP backstop).
+
+    Prefer X-Forwarded-For (left-most) then fall back to the socket peer.
+    """
+    try:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()
+        if request.client and request.client.host:
+            return request.client.host
+    except Exception:
+        pass
+    return ""
 
 
 def _count_pdf_pages(data: bytes) -> int:
@@ -41,6 +64,7 @@ def _count_pdf_pages(data: bytes) -> int:
 async def create_jobs(
     files: List[UploadFile] = File(description="One or more PDF files to process"),
     session_id: str = Depends(get_session_id),
+    request: Request = None,
 ) -> JobsCreateResponse:
     """Create processing jobs for uploaded PDFs.
 
@@ -54,6 +78,12 @@ async def create_jobs(
 
     if len(files) > settings.MAX_FILES:
         raise HTTPException(status_code=429, detail="Too many files in one request")
+
+    # App-level rate limiting: per-session jobs/min and files/min, per-IP backstop,
+    # and daily caps (per-session and global). Cost == number of files in request.
+    limiter = RateLimiterService()
+    client_ip = _get_client_ip(request)
+    limiter.enforce_upload(session_id=session_id, files_count=len(files), client_ip=client_ip)
 
     gcs = GCSService(settings.GCS_BUCKET)
     store = FirestoreService()
@@ -145,6 +175,7 @@ async def get_job_status(job_id: str, session_id: str = Depends(get_session_id))
     job = store.get_job(job_id)
     if not job or job.get("sessionId") != session_id:
         raise HTTPException(status_code=404, detail="Job not found")
+
     # Return selected fields
     return {
         "jobId": job.get("jobId"),
@@ -181,7 +212,7 @@ async def list_session_jobs(session_id: str, header_session: str = Depends(get_s
 
 
 @router.post("/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
-async def retry_job(job_id: str, session_id: str = Depends(get_session_id)) -> dict:
+async def retry_job(job_id: str, session_id: str = Depends(get_session_id), request: Request = None) -> dict:
     """Re-enqueue a job if its input PDF still exists; otherwise 409 re-upload required."""
     settings = get_settings()
     store = FirestoreService()
@@ -214,6 +245,12 @@ async def retry_job(job_id: str, session_id: str = Depends(get_session_id)) -> d
 
     tasks.enqueue_job(job_id, session_id)
     store.set_job_status(job_id, "queued", "queued")
+    # Increment manual retry counter
+    try:
+        store.update_job(job_id, {"manualRetries": Increment(1)})
+    except Exception:
+        # best-effort; do not block retry
+        pass
     # Local emulation: also trigger processing on retry
     if settings.TASKS_EMULATE:
         asyncio.create_task(

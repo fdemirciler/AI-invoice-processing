@@ -1,0 +1,140 @@
+swagger: "2.0"
+info:
+  title: ai-invoice-api
+  version: "1.0.0"
+schemes:
+  - https
+
+# Gateway -> Cloud Run backend config
+x-google-backend:
+  address: https://invoice-backend-153836769391.europe-west4.run.app
+  path_translation: APPEND_PATH_TO_ADDRESS
+  jwt_audience: https://invoice-backend-153836769391.europe-west4.run.app
+
+paths:
+  /api/config:
+    get:
+      operationId: getConfig
+      responses:
+        "200":
+          description: OK
+    options:
+      operationId: optionsConfig
+      responses:
+        "200":
+          description: Preflight
+
+  /api/jobs:
+    post:
+      operationId: createJobs
+      consumes:
+        - multipart/form-data
+      responses:
+        "202":
+          description: Accepted
+        "400":
+          description: Bad Request
+        "413":
+          description: Payload too large
+        "429":
+          description: Rate limited
+    options:
+      operationId: optionsJobs
+      responses:
+        "200":
+          description: Preflight
+
+  /api/jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        type: string
+    get:
+      operationId: getJob
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+    options:
+      operationId: optionsJobId
+      responses:
+        "200":
+          description: Preflight
+
+  /api/jobs/{jobId}/retry:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        type: string
+    post:
+      operationId: retryJob
+      responses:
+        "202":
+          description: Accepted
+        "404":
+          description: Not Found
+        "409":
+          description: Original PDF missing
+        "429":
+          description: Rate limited
+    options:
+      operationId: optionsRetry
+      responses:
+        "200":
+          description: Preflight
+
+  /api/sessions/{sessionId}/jobs:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        type: string
+    get:
+      operationId: listJobs
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Session mismatch
+    options:
+      operationId: optionsSessionJobs
+      responses:
+        "200":
+          description: Preflight
+
+  /api/sessions/{sessionId}:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        type: string
+    delete:
+      operationId: deleteSession
+      responses:
+        "200":
+          description: OK
+    options:
+      operationId: optionsDeleteSession
+      responses:
+        "200":
+          description: Preflight
+
+  /api/sessions/{sessionId}/export.csv:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        type: string
+    get:
+      operationId: exportCsv
+      responses:
+        "200":
+          description: OK
+    options:
+      operationId: optionsExportCsv
+      responses:
+        "200":
+          description: Preflight

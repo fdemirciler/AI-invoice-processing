@@ -2,6 +2,10 @@
 backend/.env
 backend/gcp-service-account.json
 
+# Frontend-specific secrets and env
+frontend/.env
+frontend/.env.local
+
 # Python caches and artifacts (recursive within backend)
 backend/**/__pycache__/
 backend/**/*.pyc
