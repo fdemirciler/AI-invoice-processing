@@ -23,7 +23,7 @@ function composeCountdown(base: string, retryAfterSec?: number, resetEpoch?: num
   
   const parts: string[] = [];
   parts.push(base);
-  if (secs > 0) parts.push(`Try again in ${secs}s`);
+  if (retryAfterSec && retryAfterSec > 0 && secs > 0) parts.push(`Try again in ${secs}s`);
   if (resets) parts.push(`Resets at ${resets}`);
   return parts.join(". ") + ".";
 }
@@ -42,7 +42,8 @@ export function RateLimitBanner({ message, onDismiss }: RateLimitBannerProps) {
       const now = Math.floor(Date.now() / 1000);
       const until = now + (message.retryAfterSec || 0);
       
-      if (now >= until) {
+      // Only auto-dismiss if there's an actual countdown (retryAfterSec > 0)
+      if (message.retryAfterSec && message.retryAfterSec > 0 && now >= until) {
         setIsExpired(true);
         return;
       }
@@ -53,18 +54,19 @@ export function RateLimitBanner({ message, onDismiss }: RateLimitBannerProps) {
     // Initial update
     updateCountdown();
     
-    // Update every second
-    const intervalId = setInterval(updateCountdown, 1000);
-
-    return () => clearInterval(intervalId);
+    // Only set interval if there's a countdown
+    if (message.retryAfterSec && message.retryAfterSec > 0) {
+      const intervalId = setInterval(updateCountdown, 1000);
+      return () => clearInterval(intervalId);
+    }
   }, [message.title, message.retryAfterSec, message.resetEpoch]);
 
-  // Auto-dismiss when expired
+  // Auto-dismiss when expired (only for timed banners)
   useEffect(() => {
-    if (isExpired) {
+    if (isExpired && message.retryAfterSec && message.retryAfterSec > 0) {
       onDismiss();
     }
-  }, [isExpired, onDismiss]);
+  }, [isExpired, onDismiss, message.retryAfterSec]);
 
   return (
     <Alert variant="warning" className="mb-4">

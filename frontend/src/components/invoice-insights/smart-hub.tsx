@@ -4,6 +4,7 @@ import type { DragEvent, ChangeEvent } from 'react';
 import React, { useRef } from 'react';
 import { UploadCloud, FileText, Loader2, CheckCircle2, XCircle, RefreshCcw, List, HelpCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useRateLimitContext } from '@/context/rate-limit-context';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -139,6 +140,7 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
   const [isDragActive, setIsDragActive] = React.useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { showRateLimit } = useRateLimitContext();
 
   const handleDrag = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -158,11 +160,10 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
     const validFiles: File[] = [];
 
     if (limits && files.length > limits.maxFiles) {
-      toast({
-        variant: 'warning',
-        title: 'Too many files',
-        description: `You can only upload a maximum of ${limits.maxFiles} files at a time.`,
-        duration: 5000,
+      showRateLimit({
+        title: 'Upload limit exceeded',
+        description: `You can only upload a maximum of ${limits.maxFiles} files at a time. Please select fewer files.`,
+        retryAfterSec: 0, // No cooldown for file count validation
       });
       return;
     }
