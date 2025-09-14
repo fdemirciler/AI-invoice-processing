@@ -4,11 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
-import { MessageCenter } from '@/components/ui/message-center';
-import { RateLimitBanner } from '@/components/ui/rate-limit-banner';
+// MessageCenter and inline banners removed in favor of unified toasts
 import { Sparkles, Moon, Sun, RefreshCcw, Github } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { useRateLimitContext } from '@/context/rate-limit-context';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import { resetSessionId } from '@/lib/session';
 import { getConfig, listJobs, createJobs, getJob, retryJob, deleteSession, exportCsv } from '@/lib/api';
@@ -45,7 +43,6 @@ export default function Home() {
   const [results, setResults] = useState<InvoiceDisplay[]>([]);
   const [theme, setTheme] = useState('dark');
   const { toast } = useToast();
-  const { message: rateLimitMessage, showRateLimit, clearRateLimit } = useRateLimitContext();
   const isMounted = useRef(true);
   // Track whether we've seen an active stage for a job, to avoid skipping straight from queued -> done in the UI
   const seenActiveStageRef = useRef<Set<string>>(new Set());
@@ -335,18 +332,8 @@ export default function Home() {
           const reset = he.rateLimit?.resetEpoch ?? until;
           setDisableUpload(true);
           setTimeout(() => setDisableUpload(false), (retryAfter || 1) * 1000);
-
-          const detail = (he.detail || '').toLowerCase();
-          let base = 'Too many requests';
-          if (detail.includes('daily limit')) base = `Daily job limit reached (${limits?.maxFiles ? 50 : 50})`;
-          if (detail.includes('service is at today')) base = 'Service is at today’s capacity';
-          
-          showRateLimit({
-            title: base,
-            description: he.detail,
-            resetEpoch: reset,
-            retryAfterSec: retryAfter,
-          });
+          const max = limits?.maxFiles ?? 5;
+          toast({ title: `Up to ${max} files can be uploaded`, variant: 'warning' as any, duration: 5000 });
           return;
         }
         toast({ title: 'Upload failed', description: String(err?.message || err), variant: 'destructive' as any, duration: 5000 });
@@ -388,14 +375,8 @@ export default function Home() {
           const reset = he.rateLimit?.resetEpoch ?? until;
           setDisableRetry(true);
           setTimeout(() => setDisableRetry(false), (retryAfter || 1) * 1000);
-          const base = 'Too many requests';
-
-          showRateLimit({
-            title: base,
-            description: he.detail,
-            resetEpoch: reset,
-            retryAfterSec: retryAfter,
-          });
+          const max = limits?.maxFiles ?? 5;
+          toast({ title: `Up to ${max} files can be uploaded`, variant: 'warning' as any, duration: 5000 });
           return;
         }
         toast({ title: 'Retry failed', description: String(err?.message || err), variant: 'destructive' as any, duration: 5000 });
@@ -495,13 +476,7 @@ export default function Home() {
 
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
-          <MessageCenter />
-          {rateLimitMessage && (
-            <RateLimitBanner 
-              message={rateLimitMessage} 
-              onDismiss={clearRateLimit} 
-            />
-          )}
+          {/* Unified toasts handle all messages now */}
           <SmartHub
             jobs={jobs}
             limits={limits}
