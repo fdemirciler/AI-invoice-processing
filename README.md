@@ -52,6 +52,7 @@ and old sessions are automatically purged after a short retention window.
   - Cloud Tasks service account (worker calls)
 - Frontend reads `NEXT_PUBLIC_API_BASE_URL` (set via GitHub Actions secret `API_GATEWAY_BASE_URL`).
 - Firebase Hosting `/api` rewrite has been removed; the frontend calls the Gateway host directly.
+- API Gateway OpenAPI spec lives at `backend/openapi-gateway.yaml` (moved from `infra/`).
 
 ## Rate limiting & UX
 

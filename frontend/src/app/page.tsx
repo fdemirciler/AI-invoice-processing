@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
 import { MessageCenter } from '@/components/ui/message-center';
+import { RateLimitBanner } from '@/components/ui/rate-limit-banner';
 import { Sparkles, Moon, Sun, RefreshCcw, Github } from 'lucide-react';
-import { toast } from '@/hooks/use-messages';
+import { useToast } from '@/hooks/use-toast';
+import { useRateLimitContext } from '@/context/rate-limit-context';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import { resetSessionId } from '@/lib/session';
 import { getConfig, listJobs, createJobs, getJob, retryJob, deleteSession, exportCsv } from '@/lib/api';
@@ -42,6 +44,8 @@ export default function Home() {
   const [jobs, setJobs] = useState<UiJob[]>([]);
   const [results, setResults] = useState<InvoiceDisplay[]>([]);
   const [theme, setTheme] = useState('dark');
+  const { toast } = useToast();
+  const { message: rateLimitMessage, showRateLimit, clearRateLimit } = useRateLimitContext();
   const isMounted = useRef(true);
   // Track whether we've seen an active stage for a job, to avoid skipping straight from queued -> done in the UI
   const seenActiveStageRef = useRef<Set<string>>(new Set());
@@ -337,13 +341,11 @@ export default function Home() {
           if (detail.includes('daily limit')) base = `Daily job limit reached (${limits?.maxFiles ? 50 : 50})`;
           if (detail.includes('service is at today')) base = 'Service is at today’s capacity';
           
-          toast({
-            id: 'rate-limit-toast',
-            variant: 'rate-limit',
+          showRateLimit({
             title: base,
-            until: until,
-            reset: reset,
-            duration: Infinity,
+            description: he.detail,
+            resetEpoch: reset,
+            retryAfterSec: retryAfter,
           });
           return;
         }
@@ -388,13 +390,11 @@ export default function Home() {
           setTimeout(() => setDisableRetry(false), (retryAfter || 1) * 1000);
           const base = 'Too many requests';
 
-          toast({
-            id: 'rate-limit-toast',
-            variant: 'rate-limit',
+          showRateLimit({
             title: base,
-            until: until,
-            reset: reset,
-            duration: Infinity,
+            description: he.detail,
+            resetEpoch: reset,
+            retryAfterSec: retryAfter,
           });
           return;
         }
@@ -496,6 +496,12 @@ export default function Home() {
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
           <MessageCenter />
+          {rateLimitMessage && (
+            <RateLimitBanner 
+              message={rateLimitMessage} 
+              onDismiss={clearRateLimit} 
+            />
+          )}
           <SmartHub
             jobs={jobs}
             limits={limits}

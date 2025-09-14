@@ -4,7 +4,6 @@ import React from "react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useMessages } from "@/hooks/use-messages";
 import { Info, AlertTriangle, XCircle, CheckCircle2, X } from "lucide-react";
-import { RateLimitAlert } from "./rate-limit-alert";
 
 function iconFor(variant?: string) {
   switch (variant) {
@@ -30,8 +29,8 @@ export function MessageCenter() {
     toasts.forEach((t: any) => {
       const id = t.id as string;
       if (timersRef.current.has(id)) return;
-      // Do not auto-dismiss rate-limit or destructive messages
-      if (t?.variant === "destructive" || t?.variant === "rate-limit") return;
+      // Do not auto-dismiss destructive messages
+      if (t?.variant === "destructive") return;
       
       const ms = typeof t?.duration === "number" ? t.duration : 5000;
       const handle = window.setTimeout(() => {
@@ -55,30 +54,25 @@ export function MessageCenter() {
 
   return (
     <div className="space-y-3" role="region" aria-live="polite" aria-label="Notifications">
-      {visible.map((t: any) => {
-        if (t.variant === "rate-limit") {
-          return <RateLimitAlert key={t.id} message={t} onDismiss={() => dismiss(t.id)} />;
-        }
-        return (
-          <div key={t.id} className="relative">
-            <Alert variant={t.variant as any}>
-              {iconFor(t.variant)}
-              <div>
-                {t.title && <AlertTitle className="text-sm font-medium">{t.title}</AlertTitle>}
-                {t.description && <AlertDescription className="text-sm">{t.description}</AlertDescription>}
-              </div>
-              <button
-                type="button"
-                className="absolute right-2 top-2 rounded-md p-1 text-foreground/60 hover:bg-muted focus:outline-none focus:ring-2"
-                aria-label="Dismiss"
-                onClick={() => dismiss(t.id)}
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Alert>
-          </div>
-        );
-      })}
+      {visible.map((t: any) => (
+        <div key={t.id} className="relative">
+          <Alert variant={t.variant as any}>
+            {iconFor(t.variant)}
+            <div>
+              {t.title && <AlertTitle className="text-sm font-medium">{t.title}</AlertTitle>}
+              {t.description && <AlertDescription className="text-sm">{t.description}</AlertDescription>}
+            </div>
+            <button
+              type="button"
+              className="absolute right-2 top-2 rounded-md p-1 text-foreground/60 hover:bg-muted focus:outline-none focus:ring-2"
+              aria-label="Dismiss"
+              onClick={() => dismiss(t.id)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </Alert>
+        </div>
+      ))}
     </div>
   );
 }
