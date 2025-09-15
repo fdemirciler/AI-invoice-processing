@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import List, Optional
+import re
 from pydantic import BaseModel, Field
 
 
@@ -82,18 +83,88 @@ class Invoice(BaseModel):
         # Coerce currency
         cur = (data.get("currency") or "EUR").upper()
         data["currency"] = cur
-        # Ensure numeric fields are floats
+        
+        def _parse_number(val) -> float:
+            """Parse numbers from mixed-locale strings.
+
+            Accepts strings like "€ 1.234,56", "1,234.56", "1234.56", "2x", "2 pcs".
+            Strategy:
+            - Strip currency symbols and letters, keep digits, separators (., ,), minus, and parentheses.
+            - Detect decimal separator by the rightmost of ',' or '.'. Treat the other as thousand sep and remove.
+            - Support negatives in parentheses, e.g., (123.45) -> -123.45.
+            """
+            if val is None:
+                raise ValueError("empty number")
+            if isinstance(val, (int, float)):
+                return float(val)
+            s = str(val).strip()
+            if not s:
+                raise ValueError("empty number")
+            # Parentheses negative
+            neg = False
+            if s.startswith("(") and s.endswith(")"):
+                neg = True
+                s = s[1:-1]
+            # Remove all but digits, separators, minus
+            s = re.sub(r"[^0-9,\.\-]", "", s)
+            # If both separators appear, choose rightmost as decimal
+            last_comma = s.rfind(',')
+            last_dot = s.rfind('.')
+            if last_comma == -1 and last_dot == -1:
+                num = float(s or 0)
+            else:
+                if last_comma > last_dot:
+                    # comma decimal; remove all dots (thousands), replace comma with dot
+                    num = float(s.replace('.', '').replace(',', '.'))
+                else:
+                    # dot decimal; remove all commas (thousands)
+                    num = float(s.replace(',', ''))
+            if neg:
+                num = -num
+            return num
+
+        # Ensure numeric fields are floats (tolerant parsing)
         for k in ("subtotal", "tax", "total"):
-            if k in data and isinstance(data[k], str):
-                data[k] = float(data[k].replace(",", "."))
-        # Line totals safety
-        items = data.get("lineItems") or []
-        for it in items:
-            for k in ("quantity", "unitPrice", "lineTotal"):
-                if k in it and isinstance(it[k], str):
-                    it[k] = float(it[k].replace(",", "."))
-            if not it.get("lineTotal") and it.get("quantity") is not None and it.get("unitPrice") is not None:
-                it["lineTotal"] = float(it["quantity"]) * float(it["unitPrice"])  # type: ignore[arg-type]
+            if k in data:
+                try:
+                    data[k] = _parse_number(data[k])
+                except Exception:
+                    pass  # let model validation surface errors if still invalid
+
+        # Sanitize line items: parse numbers, infer missing lineTotal, drop invalid/negative items
+        raw_items = data.get("lineItems") or []
+        clean_items: List[dict] = []
+        for it in raw_items:
+            # Require description
+            desc = (it.get("description") or "").strip()
+            if not desc:
+                continue
+            try:
+                q = _parse_number(it.get("quantity")) if it.get("quantity") is not None else None
+                up = _parse_number(it.get("unitPrice")) if it.get("unitPrice") is not None else None
+                lt = _parse_number(it.get("lineTotal")) if it.get("lineTotal") is not None else None
+            except Exception:
+                # Skip items that cannot be parsed
+                continue
+            # Infer missing lineTotal
+            if lt is None and q is not None and up is not None:
+                lt = q * up
+            # Validate non-negative and presence
+            try:
+                if q is None or up is None or lt is None:
+                    continue
+                if q < 0 or up < 0 or lt < 0:
+                    continue
+                clean_items.append({
+                    "description": desc,
+                    "quantity": float(q),
+                    "unitPrice": float(up),
+                    "lineTotal": float(lt),
+                })
+            except Exception:
+                continue
+        data["lineItems"] = clean_items
+
         return cls.model_validate(data)
 
     def to_csv_rows(self, filename: str, confidence: float | None = None) -> List[dict]:

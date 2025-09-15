@@ -258,8 +258,22 @@ async def process_task(
         return {"ok": True, "jobId": job_id, "status": "done", "confidence": confidence}
 
     except ValidationError as exc:
-        logger.error("[%s] validation error: %s", job_id, exc)
-        store.set_error(job_id, f"Validation error: {str(exc)}")
+        # Log detailed pydantic errors and a small preview of parsed payload
+        try:
+            err_details = exc.errors()
+        except Exception:
+            err_details = []
+        try:
+            preview = {
+                "subtotal": parsed.get("subtotal") if isinstance(parsed, dict) else None,
+                "tax": parsed.get("tax") if isinstance(parsed, dict) else None,
+                "total": parsed.get("total") if isinstance(parsed, dict) else None,
+                "lineItemsCount": len(parsed.get("lineItems") or []) if isinstance(parsed, dict) else None,
+            }
+        except Exception:
+            preview = None
+        logger.error("[%s] validation error: %s | details=%s | preview=%s", job_id, exc, err_details, preview)
+        store.set_error(job_id, "Validation error: invoice schema mismatch (see logs)")
         return {"ok": False, "jobId": job_id, "error": "validation error"}
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:

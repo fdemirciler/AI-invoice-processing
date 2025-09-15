@@ -50,6 +50,8 @@ JSON_INSTRUCTIONS = (
     "  'Valuta' -> currency. Default currency to EUR if not found. "
     "- Dates must be YYYY-MM-DD. "
     "- All numeric fields must be numbers (not strings). Use '.' as decimal separator. "
+    "- Do NOT include currency symbols or thousand separators in numeric outputs; return plain numbers only. "
+    "- For quantities like '2x' or '2 pcs', output quantity as 2. "
     "- Prefer totals explicitly labeled as 'Totaal', 'Total', or 'Balance Due' if multiple candidates exist. "
     "Return ONLY the JSON object. No markdown, no code fences, no commentary."
 )
