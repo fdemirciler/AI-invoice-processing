@@ -131,10 +131,7 @@ export default function Home() {
             }, 500);
             return;
           }
-          const displayStatus: JobStatus =
-            detail.status === 'queued' && seenActiveStageRef.current.has(jobId)
-              ? ('processing' as JobStatus)
-              : (detail.status as JobStatus);
+          const displayStatus: JobStatus = detail.status as JobStatus;
 
           setJobs((prev: UiJob[]) =>
             prev.map((j: JobItem) =>
@@ -308,21 +305,6 @@ export default function Home() {
         }
         resp.jobs.forEach((j) => {
           schedulePoll(j.jobId, 0);
-          // Shorten the visual 'Queued' duration with a brief, optimistic transition to 'Processing'
-          window.setTimeout(() => {
-            if (!isMounted.current) return;
-            setJobs((prev: JobItem[]) =>
-              prev.map((it: JobItem) => {
-                if (it.jobId !== j.jobId) return it;
-                if (it.status === 'queued' || it.status === 'uploaded') {
-                  // mark as seen active to avoid later 'done' -> simulated processing bounce
-                  seenActiveStageRef.current.add(j.jobId);
-                  return { ...it, status: 'processing' as JobStatus };
-                }
-                return it;
-              })
-            );
-          }, 300);
         });
       } catch (err: any) {
         if ((err as any)?.status === 429) {
@@ -349,20 +331,6 @@ export default function Home() {
         await retryJob(jobId, sessionId);
         setJobs((prev: JobItem[]) => prev.map((j: JobItem) => (j.jobId === jobId ? { ...j, status: 'queued' as JobStatus } : j)));
         schedulePoll(jobId, 0);
-        // As with fresh uploads, shorten the queued visual state on retries
-        window.setTimeout(() => {
-          if (!isMounted.current) return;
-          setJobs((prev: JobItem[]) =>
-            prev.map((it: JobItem) => {
-              if (it.jobId !== jobId) return it;
-              if (it.status === 'queued' || it.status === 'uploaded') {
-                seenActiveStageRef.current.add(jobId);
-                return { ...it, status: 'processing' as JobStatus };
-              }
-              return it;
-            })
-          );
-        }, 300);
       } catch (err: any) {
         if ((err as any)?.status === 429) {
           const he = err as HttpError;

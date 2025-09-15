@@ -50,47 +50,63 @@ const truncate = (s?: string, n = 160) => {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 };
 
-const simpleLabel = (status: JobStatus): 'Queued' | 'Processing' | 'Done' | 'Failed' => {
-  if (status === 'done') return 'Done';
-  if (status === 'failed') return 'Failed';
-  if (status === 'queued' || status === 'uploaded') return 'Queued';
-  // extracting, llm, processing -> Processing
-  return 'Processing';
+const labelFromStatus = (
+  status: JobStatus
+): 'Uploaded' | 'Queued' | 'Processing' | 'Extracting' | 'Analyzing' | 'Done' | 'Failed' => {
+  switch (status) {
+    case 'uploaded':
+      return 'Uploaded';
+    case 'queued':
+      return 'Queued';
+    case 'processing':
+      return 'Processing';
+    case 'extracting':
+      return 'Extracting';
+    case 'llm':
+      return 'Analyzing';
+    case 'done':
+      return 'Done';
+    case 'failed':
+      return 'Failed';
+    default:
+      return 'Queued';
+  }
 };
 
 const StatusIndicator = ({ status }: { status: JobStatus }) => {
-  const label = simpleLabel(status);
-  switch (label) {
-    case 'Processing':
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
-        >
-          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-          Processing
-        </Badge>
-      );
-    case 'Done':
-      return (
-        <Badge
-          variant="secondary"
-          className="bg-green-200 text-green-900 dark:bg-green-900/30 dark:text-green-200"
-        >
-          <CheckCircle2 className="mr-1 h-3 w-3" />
-          Done
-        </Badge>
-      );
-    case 'Failed':
-      return (
-        <Badge variant="destructive">
-          <XCircle className="mr-1 h-3 w-3" />
-          Failed
-        </Badge>
-      );
-    default:
-      return <Badge variant="outline">Queued</Badge>;
+  const label = labelFromStatus(status);
+  if (label === 'Processing' || label === 'Extracting' || label === 'Analyzing') {
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+      >
+        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+        {label}
+      </Badge>
+    );
   }
+  if (label === 'Done') {
+    return (
+      <Badge
+        variant="secondary"
+        className="bg-green-200 text-green-900 dark:bg-green-900/30 dark:text-green-200"
+      >
+        <CheckCircle2 className="mr-1 h-3 w-3" />
+        Done
+      </Badge>
+    );
+  }
+  if (label === 'Failed') {
+    return (
+      <Badge variant="destructive">
+        <XCircle className="mr-1 h-3 w-3" />
+        Failed
+      </Badge>
+    );
+  }
+  // Uploaded and Queued get outline style with explicit text
+  return <Badge variant="outline">{label}</Badge>;
 };
 
 const stageOrder = ['uploaded', 'queued', 'processing', 'extracting', 'llm', 'done'] as const;
@@ -139,6 +155,33 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
   const [isDragActive, setIsDragActive] = React.useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  // UI-only grace period to briefly show "Extracting" when jumping straight to LLM
+  const [extractingGrace, setExtractingGrace] = React.useState<Record<string, boolean>>({});
+
+  React.useEffect(() => {
+    // For each job, if status is llm and stages lacks 'extracting', briefly overlay 'extracting'
+    const next: Record<string, boolean> = { ...extractingGrace };
+    jobs.forEach((job) => {
+      const hasExtracting = !!job.stages?.['extracting'];
+      if (job.status === 'llm' && !hasExtracting && !next[job.jobId]) {
+        next[job.jobId] = true;
+        // Clear after ~350ms
+        window.setTimeout(() => {
+          setExtractingGrace((prev) => {
+            const copy = { ...prev };
+            delete copy[job.jobId];
+            return copy;
+          });
+        }, 350);
+      }
+    });
+    // Only set state if something changed to avoid loops
+    const changed = Object.keys(next).length !== Object.keys(extractingGrace).length ||
+      Object.keys(next).some((k) => next[k] !== extractingGrace[k]);
+    if (changed) setExtractingGrace(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs]);
 
   const handleDrag = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -288,45 +331,54 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
             >
                 <div className="space-y-4">
                 {jobs.map((job) => (
-                    <div
-                    key={job.jobId}
-                    className={cn(
-                        "flex items-center space-x-4 p-3 bg-card rounded-lg border transition-opacity",
-                        job.status === 'done' && 'opacity-60'
-                    )}
-                    >
-                    <FileText className="h-6 w-6 text-muted-foreground flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p
-                            className="text-sm font-medium text-foreground truncate"
-                            title={job.filename}
-                          >
-                            {job.filename}
-                          </p>
-                          <span className="text-xs text-muted-foreground flex-shrink-0">
-                            {[
-                              job.sizeBytes !== undefined ? formatKb(job.sizeBytes) : null,
-                              job.pageCount !== undefined ? formatPages(job.pageCount) : null,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </span>
+                  <div
+                  key={job.jobId}
+                  className={cn(
+                      "flex items-center space-x-4 p-3 bg-card rounded-lg border transition-opacity",
+                      job.status === 'done' && 'opacity-60'
+                  )}
+                  >
+                  <FileText className="h-6 w-6 text-muted-foreground flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <p
+                          className="text-sm font-medium text-foreground truncate"
+                          title={job.filename}
+                        >
+                          {job.filename}
+                        </p>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                          {[
+                            job.sizeBytes !== undefined ? formatKb(job.sizeBytes) : null,
+                            job.pageCount !== undefined ? formatPages(job.pageCount) : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </div>
+                      {job.status !== 'failed' ? (
+                        <div className="mt-2">
+                          {(() => {
+                            const overlay = !!extractingGrace[job.jobId];
+                            const displayStatus = overlay ? ('extracting' as JobStatus) : job.status;
+                            const pct = progressFromStages(job.stages, displayStatus);
+                            const stageLabel = labelFromStatus(displayStatus);
+                            return (
+                              <>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs text-muted-foreground">{stageLabel}</span>
+                                  <span className="text-xs text-muted-foreground">{pct}%</span>
+                                </div>
+                                <Progress value={pct} className="h-2" />
+                              </>
+                            );
+                          })()}
                         </div>
-                        {job.status !== 'failed' ? (
-                          <div className="mt-2">
-                            <div className="flex items-center justify-end mb-1">
-                              <span className="text-xs text-muted-foreground">
-                                {progressFromStages(job.stages, job.status)}%
-                              </span>
-                            </div>
-                            <Progress value={progressFromStages(job.stages, job.status)} className="h-2" />
-                          </div>
-                        ) : (
-                          <div className="mt-2 flex items-start gap-1">
-                            <p className="text-xs text-red-600 dark:text-red-400 break-words flex-1">
-                              {truncate(job.error ?? 'Processing failed')}
-                            </p>
+                      ) : (
+                        <div className="mt-2 flex items-start gap-1">
+                          <p className="text-xs text-red-600 dark:text-red-400 break-words flex-1">
+                            {truncate(job.error ?? 'Processing failed')}
+                          </p>
                             {job.error && (
                               <TooltipProvider>
                                 <Tooltip>
@@ -349,7 +401,11 @@ export function SmartHub({ jobs, limits, onFilesAdded, onRetry, bannerText, disa
                         )}
                     </div>
                     <div className="flex items-center space-x-2">
-                        <StatusIndicator status={job.status} />
+                        {(() => {
+                          const overlay = !!extractingGrace[job.jobId];
+                          const displayStatus = overlay ? ('extracting' as JobStatus) : job.status;
+                          return <StatusIndicator status={displayStatus} />;
+                        })()}
                         {job.status === 'failed' && (
                         <Button
                             variant="ghost"
