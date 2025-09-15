@@ -73,7 +73,7 @@ and old sessions are automatically purged after a short retention window.
 - Resilient workers: A stale‑lock takeover lets a healthy worker reclaim jobs stuck in `processing` if another
   worker crashes. We also send light “heartbeats” during long stages so you can observe progress.
 - Tiered OCR: Vision-only. Uses synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
-- Sanitizer preprocessing: Lightweight, line‑preserving sanitization (configurable top/bottom strip, noise removal, smart truncation) before the LLM. The legacy Vision DOM preprocessor has been removed.
+- Sanitizer preprocessing: Lightweight, line‑preserving sanitization (configurable top/bottom strip, noise removal, smart truncation) before the LLM.
 
 ## Local Development
 
@@ -123,13 +123,8 @@ Environment variables (defaults shown):
 - OPENROUTER_API_KEY=
 - OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
 
-# OCR language hints
-- OCR_LANG_HINTS=en,nl
-
 # OCR tiering
 - OCR_SYNC_MAX_PAGES=2
-- OCR_TEXT_MIN_CHARS=200
-- OCR_TEXT_KEYWORDS=invoice|factuur;total|totaal|bedrag|omschrijving|prijs
 
 # Preprocessing (sanitizer)
 - PREPROCESS_MAX_CHARS=20000

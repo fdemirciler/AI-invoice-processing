@@ -96,8 +96,6 @@ not output anything other than the JSON object itself.
 
 - Line Items:  
   - Accurately parse each distinct item.  
-  - If a summary marker like `...[N line items summarized]...` is present, 
-    return an empty array `[]` for `lineItems`.  
   - Ignore non-item lines like "Subtotal" or "Discount" when creating 
     the `lineItems` array.  
 

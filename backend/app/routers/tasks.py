@@ -27,15 +27,6 @@ from ..services.vision import VisionService
 router = APIRouter(prefix="/tasks", tags=["tasks"])  # mounted under /api
 logger = logging.getLogger(__name__)
 
-
-def _normalize_text(text: str) -> str:
-    # Basic normalization: NFKC, collapse whitespace, strip
-    text = unicodedata.normalize("NFKC", text)
-    text = re.sub(r"[ \t\f\v]+", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
 def sanitize_for_llm(text: str, max_chars: int, strip_top: int, strip_bottom: int) -> str:
     """Lightweight sanitizer that preserves line breaks for the LLM.
 
@@ -191,11 +182,11 @@ async def process_task(
         except Exception:
             pass
 
-        # Preprocess text via lightweight sanitizer (legacy preprocessor removed)
+        # Preprocess text via lightweight sanitizer
         raw_text = ocr.text or ""
         raw_token_proxy = len(raw_text.split())
 
-        preproc_stats = {"enabled": False, "tableDetected": False, "reduction": 0.0}
+        preproc_stats = {"reduction": 0.0}
         text_for_llm = sanitize_for_llm(
             raw_text,
             settings.PREPROCESS_MAX_CHARS,
