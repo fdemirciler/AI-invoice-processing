@@ -1,6 +1,6 @@
 """Tasks worker endpoint: processes a single job end-to-end.
 
-Pipeline: Acquire lock -> OCR -> preprocess -> LLM -> validate -> score -> persist -> cleanup.
+Pipeline: Acquire lock -> OCR -> sanitize -> LLM -> validate -> score -> persist -> cleanup.
 Includes granular error handling and always releases the processing lock.
 """
 from __future__ import annotations
@@ -23,7 +23,6 @@ from ..services.firestore import FirestoreService
 from ..services.gcs import GCSService
 from ..services.llm import LLMService
 from ..services.vision import VisionService
-from ..services.preprocess.preprocessor import PreprocessorService, PreprocessResult
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])  # mounted under /api
 logger = logging.getLogger(__name__)
@@ -35,6 +34,52 @@ def _normalize_text(text: str) -> str:
     text = re.sub(r"[ \t\f\v]+", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def sanitize_for_llm(text: str, max_chars: int, strip_top: int, strip_bottom: int) -> str:
+    """Lightweight sanitizer that preserves line breaks for the LLM.
+
+    Steps:
+    1) Ultra-light zoning: optionally drop top/bottom lines to remove boilerplate.
+    2) Line-wise normalization and expanded noise removal (keeps newlines).
+    3) Smart truncation at a newline boundary when possible.
+    """
+    # 1) Ultra-Light Zoning
+    lines = text.splitlines()
+    if strip_top < 0:
+        strip_top = 0
+    if strip_bottom < 0:
+        strip_bottom = 0
+    if len(lines) > (strip_top + strip_bottom + 5):  # avoid on very short docs
+        end_idx = len(lines) - strip_bottom if strip_bottom > 0 else len(lines)
+        lines = lines[strip_top:end_idx]
+
+    # 2) Line-wise normalization and noise removal
+    norm_lines = []
+    for ln in lines:
+        ln = unicodedata.normalize("NFKC", ln)
+        ln = re.sub(r"[ \t\f\v]+", " ", ln).strip()
+        if ln:
+            norm_lines.append(ln)
+    text2 = "\n".join(norm_lines)
+
+    noise_patterns = [
+        re.compile(r"\bPage \d+ of \d+\b", re.IGNORECASE),
+        re.compile(r"Invoice scanned by.*", re.IGNORECASE),
+        re.compile(r"\bConfidential\b", re.IGNORECASE),
+    ]
+    for pat in noise_patterns:
+        text2 = pat.sub("", text2)
+    # Trim any empty lines introduced by removals
+    text2 = "\n".join([seg.strip() for seg in text2.splitlines() if seg.strip()])
+
+    # 3) Smart truncation
+    max_chars = max(1000, int(max_chars))
+    if len(text2) > max_chars:
+        cut = text2.rfind("\n", 0, max_chars)
+        text2 = text2[:cut] if cut != -1 else text2[:max_chars]
+
+    return text2
 
 
 def _compute_confidence(ocr_text: str, pages: int, inv: Invoice) -> float:
@@ -135,7 +180,6 @@ async def process_task(
             temp_prefix=temp_prefix,
             batch_size=min(page_count, settings.MAX_PAGES),
             page_count=page_count,
-            return_annotations=settings.PREPROCESS_ENABLED,
         )
         try:
             store.update_job(job_id, {"ocrMethod": ocr.method})
@@ -147,25 +191,28 @@ async def process_task(
         except Exception:
             pass
 
-        # Preprocess text (Vision-only). If enabled, build payload from annotations; else, use OCR text.
-        payload = ocr.text
-        preproc_stats = {"enabled": False, "tableDetected": False, "reduction": 0.0}
-        if settings.PREPROCESS_ENABLED:
-            pp = PreprocessorService()
-            try:
-                res: PreprocessResult = pp.process(ocr.annotations or [])
-                if res and res.text:
-                    preproc_stats["enabled"] = True
-                    preproc_stats["tableDetected"] = bool(res.table_detected)
-                    # compute token/char reduction relative to raw OCR text
-                    base = max(1, len(ocr.text))
-                    preproc_stats["reduction"] = round(max(0.0, 1.0 - (len(res.text) / float(base))), 3)
-                    payload = res.text
-            except Exception:
-                # On any preprocessing failure, fallback silently to OCR text
-                pass
+        # Preprocess text via lightweight sanitizer (legacy preprocessor removed)
+        raw_text = ocr.text or ""
+        raw_token_proxy = len(raw_text.split())
 
-        text_norm = _normalize_text(payload)
+        preproc_stats = {"enabled": False, "tableDetected": False, "reduction": 0.0}
+        text_for_llm = sanitize_for_llm(
+            raw_text,
+            settings.PREPROCESS_MAX_CHARS,
+            settings.ZONE_STRIP_TOP,
+            settings.ZONE_STRIP_BOTTOM,
+        )
+        base = max(1, len(raw_text))
+        preproc_stats["reduction"] = round(max(0.0, 1.0 - (len(text_for_llm) / float(base))), 3)
+        sanitized_token_proxy = len(text_for_llm.split())
+
+        logger.info(
+            "[%s][%s] Sanitization metrics - raw_tokens=%s, sanitized_tokens=%s",
+            job_id,
+            worker_id,
+            raw_token_proxy,
+            sanitized_token_proxy,
+        )
 
         # LLM extraction stage
         store.set_job_status(job_id, "llm", "llm")
@@ -173,7 +220,7 @@ async def process_task(
             store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
         except Exception:
             pass
-        parsed = await llm.extract_invoice_async(text_norm)
+        parsed = await llm.extract_invoice_async(text_for_llm)
         try:
             store.update_job(job_id, {"stages": {"heartbeat": firestore.SERVER_TIMESTAMP}})
         except Exception:
@@ -184,7 +231,7 @@ async def process_task(
 
         # Confidence score
         confidence = _compute_confidence(
-            ocr_text=text_norm, pages=ocr.pages or job.get("pageCount", 1), inv=invoice
+            ocr_text=text_for_llm, pages=ocr.pages or job.get("pageCount", 1), inv=invoice
         )
 
         # Persist result (ensure JSON-serializable types for Firestore)

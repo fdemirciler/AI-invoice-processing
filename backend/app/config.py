@@ -43,6 +43,7 @@ class Settings:
     GEMINI_MODEL: str
     OPENROUTER_API_KEY: str
     OPENROUTER_MODEL: str
+    LLM_PROMPT_VERSION: str
 
     # OCR
     OCR_LANG_HINTS: List[str]
@@ -59,18 +60,10 @@ class Settings:
     # Locks
     LOCK_STALE_MINUTES: int
 
-    # Preprocessing
-    PREPROCESS_ENABLED: bool
-    PREPROCESS_FORCE_VISION: bool
-    PREPROCESS_GLOBAL_CONF_MIN: float
-    PREPROCESS_HEADER_CONF_MIN: float
-    PREPROCESS_BODY_CONF_MIN: float
-    PREPROCESS_FOOTER_CONF_MIN: float
-    PREPROCESS_ZONE_GAP_MIN_RATIO: float
-    PREPROCESS_TABLE_MIN_ROWS: int
-    PREPROCESS_TABLE_MIN_COLS: int
-    PREPROCESS_TABLE_HEADER_KEYWORDS: str
+    # Preprocessing (sanitizer path)
     PREPROCESS_MAX_CHARS: int
+    ZONE_STRIP_TOP: int
+    ZONE_STRIP_BOTTOM: int
 
     # Rate limiting / quotas
     RL_ENABLED: bool
@@ -109,6 +102,7 @@ class Settings:
         self.GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
         self.OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+        self.LLM_PROMPT_VERSION = os.getenv("LLM_PROMPT_VERSION", "v1")
 
         # OCR
         self.OCR_LANG_HINTS = self._get_list("OCR_LANG_HINTS", default="en,nl")
@@ -129,21 +123,10 @@ class Settings:
         # Locks
         self.LOCK_STALE_MINUTES = int(os.getenv("LOCK_STALE_MINUTES", "15"))
 
-        # Preprocessing (Vision-only)
-        self.PREPROCESS_ENABLED = os.getenv("PREPROCESS_ENABLED", "true").lower() == "true"
-        self.PREPROCESS_FORCE_VISION = os.getenv("PREPROCESS_FORCE_VISION", "true").lower() == "true"
-        self.PREPROCESS_GLOBAL_CONF_MIN = float(os.getenv("PREPROCESS_GLOBAL_CONF_MIN", "0.5"))
-        self.PREPROCESS_HEADER_CONF_MIN = float(os.getenv("PREPROCESS_HEADER_CONF_MIN", "0.7"))
-        self.PREPROCESS_BODY_CONF_MIN = float(os.getenv("PREPROCESS_BODY_CONF_MIN", "0.7"))
-        self.PREPROCESS_FOOTER_CONF_MIN = float(os.getenv("PREPROCESS_FOOTER_CONF_MIN", "0.4"))
-        self.PREPROCESS_ZONE_GAP_MIN_RATIO = float(os.getenv("PREPROCESS_ZONE_GAP_MIN_RATIO", "0.06"))
-        self.PREPROCESS_TABLE_MIN_ROWS = int(os.getenv("PREPROCESS_TABLE_MIN_ROWS", "4"))
-        self.PREPROCESS_TABLE_MIN_COLS = int(os.getenv("PREPROCESS_TABLE_MIN_COLS", "3"))
-        self.PREPROCESS_TABLE_HEADER_KEYWORDS = os.getenv(
-            "PREPROCESS_TABLE_HEADER_KEYWORDS",
-            "description|omschrijving;quantity|aantal;price|prijs;total|totaal|bedrag",
-        )
+        # Preprocessing (sanitizer path only)
         self.PREPROCESS_MAX_CHARS = int(os.getenv("PREPROCESS_MAX_CHARS", "20000"))
+        self.ZONE_STRIP_TOP = int(os.getenv("ZONE_STRIP_TOP", "5"))
+        self.ZONE_STRIP_BOTTOM = int(os.getenv("ZONE_STRIP_BOTTOM", "5"))
 
         # Rate limiting / quotas (defaults are conservative; override in env)
         self.RL_ENABLED = os.getenv("RL_ENABLED", "true").lower() == "true"

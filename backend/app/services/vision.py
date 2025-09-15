@@ -4,19 +4,17 @@ Strategy:
 - Use synchronous Vision for short scans (low overhead for small PDFs).
 - Fall back to asynchronous Vision for longer scans (robust for many pages).
 
-Optionally returns raw annotations for preprocessing.
-
 Note: Keep batch_size <= MAX_PAGES to avoid partial outputs for our limit.
 """
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 from google.cloud import storage
 from google.cloud import vision_v1 as vision
-from google.protobuf.json_format import MessageToDict
+# MessageToDict import removed with annotation support
 
 from ..config import get_settings
 
@@ -26,7 +24,6 @@ class OcrResult:
     text: str
     pages: int
     method: str = "vision_async"
-    annotations: Optional[List[dict]] = None
 
 
 class VisionService:
@@ -35,14 +32,13 @@ class VisionService:
         self._vision = vision.ImageAnnotatorClient()
         self._bucket = self._storage.bucket(bucket_name)
 
-    # Public API (keeps original name). Added optional page_count and return_annotations.
+    # Public API (keeps original name). Added optional page_count.
     def ocr_pdf_from_gcs(
         self,
         gcs_uri: str,
         temp_prefix: str,
         batch_size: int = 20,
         page_count: int | None = None,
-        return_annotations: bool = False,
     ) -> OcrResult:
         """Tiered OCR for a GCS PDF and return aggregated text.
 
@@ -53,27 +49,24 @@ class VisionService:
 
         # If we don't know page count, fall back to async (robust for any size)
         if page_count is None:
-            return self._ocr_async(gcs_uri, temp_prefix, batch_size=batch_size, return_annotations=return_annotations)
+            return self._ocr_async(gcs_uri, temp_prefix, batch_size=batch_size)
 
         # 1) PyPDF text layer is removed due to unsatisfactory results
 
         # 2) Use synchronous Vision OCR for short scans
         if page_count <= settings.OCR_SYNC_MAX_PAGES:
-            return self._ocr_sync(gcs_uri, page_count, return_annotations=return_annotations)
+            return self._ocr_sync(gcs_uri, page_count)
 
         # 3) Fall back to async for longer scans
         return self._ocr_async(
-            gcs_uri, temp_prefix, batch_size=batch_size, return_annotations=return_annotations
+            gcs_uri, temp_prefix, batch_size=batch_size
         )
 
     
     # --- extractors ---
 
-    def _ocr_sync(self, gcs_uri: str, page_count: int, *, return_annotations: bool = False) -> OcrResult:
-        """Synchronous Vision OCR for small PDFs (returns result directly).
-
-        When return_annotations is True, also returns Vision responses as dicts for preprocessing.
-        """
+    def _ocr_sync(self, gcs_uri: str, page_count: int) -> OcrResult:
+        """Synchronous Vision OCR for small PDFs (returns result directly)."""
         feature = vision.Feature(type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION)
         gcs_source = vision.GcsSource(uri=gcs_uri)
         input_config = vision.InputConfig(gcs_source=gcs_source, mime_type="application/pdf")
@@ -84,31 +77,21 @@ class VisionService:
 
         full_text: List[str] = []
         pages = 0
-        annotations: List[dict] = [] if return_annotations else None  # type: ignore[assignment]
+        # annotations removed
         for file_resp in response.responses:
             for img_resp in getattr(file_resp, "responses", []) or []:
                 fta = getattr(img_resp, "full_text_annotation", None)
                 if fta and getattr(fta, "text", None):
                     full_text.append(fta.text)
                 pages += 1
-                if return_annotations:
-                    try:
-                        msg = getattr(img_resp, "_pb", img_resp)
-                        annotations.append(MessageToDict(msg))  # type: ignore[arg-type]
-                    except Exception:
-                        pass
         return OcrResult(
             text="\n".join(full_text).strip(),
             pages=pages or page_count,
             method="vision_sync",
-            annotations=annotations,
         )
 
-    def _ocr_async(self, gcs_uri: str, temp_prefix: str, batch_size: int = 20, *, return_annotations: bool = False) -> OcrResult:
-        """Asynchronous Vision OCR for larger PDFs (writes outputs to GCS, then aggregates).
-
-        When return_annotations is True, also returns per-page Vision responses as dicts.
-        """
+    def _ocr_async(self, gcs_uri: str, temp_prefix: str, batch_size: int = 20) -> OcrResult:
+        """Asynchronous Vision OCR for larger PDFs (writes outputs to GCS, then aggregates)."""
         input_config = vision.InputConfig(
             gcs_source=vision.GcsSource(uri=gcs_uri), mime_type="application/pdf"
         )
@@ -128,7 +111,7 @@ class VisionService:
         blobs = list(self._storage.list_blobs(self._bucket.name, prefix=prefix_path))
 
         full_text: List[str] = []
-        annotations: List[dict] = [] if return_annotations else None  # type: ignore[assignment]
+        # annotations removed
         page_total = 0
         for b in blobs:
             data = b.download_as_bytes()
@@ -138,8 +121,6 @@ class VisionService:
                 if fta and "text" in fta:
                     full_text.append(fta["text"])
                 page_total += 1
-                if return_annotations and annotations is not None:
-                    annotations.append(r)
 
         # Cleanup temporary OCR outputs
         for b in blobs:
@@ -152,5 +133,4 @@ class VisionService:
             text="\n".join(full_text).strip(),
             pages=page_total,
             method="vision_async",
-            annotations=annotations,
         )

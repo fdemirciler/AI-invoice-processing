@@ -61,7 +61,7 @@ and old sessions are automatically purged after a short retention window.
   - Daily caps: per-session and global (CET fixed +1 for reset)
   - Optional per-IP backstop
 - 429 responses include `Retry-After` and `X-RateLimit-*` headers.
-- Frontend shows a neutral inline banner with a countdown and CET reset time.
+- Frontend shows unified toast notifications during cooldown; only the affected control is disabled. CET-based daily reset still applies.
 - Only the affected control is disabled during cooldown (Upload or Retry).
 - Manual retry cap per job: 3 (further retries are rejected).
 
@@ -73,7 +73,7 @@ and old sessions are automatically purged after a short retention window.
 - Resilient workers: A stale‑lock takeover lets a healthy worker reclaim jobs stuck in `processing` if another
   worker crashes. We also send light “heartbeats” during long stages so you can observe progress.
 - Tiered OCR: Vision-only. Uses synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
-- Preprocessing (Vision-only): Adaptive DOM-based cleaning and optional table summarization with safe fallbacks to reduce tokens before LLM.
+- Sanitizer preprocessing: Lightweight, line‑preserving sanitization (configurable top/bottom strip, noise removal, smart truncation) before the LLM. The legacy Vision DOM preprocessor has been removed.
 
 ## Local Development
 
@@ -106,7 +106,7 @@ Open http://localhost:8080/docs for Swagger UI.
 
 Environment variables (defaults shown):
 - CORS_ORIGINS=["*"  (comma-separated list)](https://ai-invoice-scan.web.app,https://ai-invoice-scan.firebaseapp.com,http://localhost:9002,http://localhost:3000)
-- MAX_FILES=10
+- MAX_FILES=5
 - MAX_SIZE_MB=10
 - MAX_PAGES=20
 - GCS_BUCKET=invoice_processing_storage
@@ -128,22 +128,16 @@ Environment variables (defaults shown):
 
 # OCR tiering
 - OCR_SYNC_MAX_PAGES=2
-- OCR_PYPDF_MAX_PAGES=10
 - OCR_TEXT_MIN_CHARS=200
 - OCR_TEXT_KEYWORDS=invoice|factuur;total|totaal|bedrag|omschrijving|prijs
 
-# Preprocessing (Vision-only)
-- PREPROCESS_ENABLED=true
-- PREPROCESS_FORCE_VISION=true
-- PREPROCESS_GLOBAL_CONF_MIN=0.5
-- PREPROCESS_HEADER_CONF_MIN=0.7
-- PREPROCESS_BODY_CONF_MIN=0.7
-- PREPROCESS_FOOTER_CONF_MIN=0.4
-- PREPROCESS_ZONE_GAP_MIN_RATIO=0.06
-- PREPROCESS_TABLE_MIN_ROWS=4
-- PREPROCESS_TABLE_MIN_COLS=3
-- PREPROCESS_TABLE_HEADER_KEYWORDS=description|omschrijving;quantity|aantal;price|prijs;total|totaal|bedrag
+# Preprocessing (sanitizer)
 - PREPROCESS_MAX_CHARS=20000
+- ZONE_STRIP_TOP=5
+- ZONE_STRIP_BOTTOM=5
+
+# Prompt versioning
+- LLM_PROMPT_VERSION=v1
 
 # Retention
 - RETENTION_HOURS=24

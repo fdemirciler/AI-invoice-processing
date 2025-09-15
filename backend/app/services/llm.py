@@ -33,6 +33,7 @@ def _is_retryable(exc: Exception) -> bool:  # pragma: no cover - simple predicat
         return status == 429 or 500 <= status < 600
     return False
 
+# Default prompt (v1). Additional versions can be added to PROMPTS below.
 JSON_INSTRUCTIONS = (
     "You are an expert invoice extraction engine. Input text is OCR of an invoice and may be English or Dutch (Nederlands). "
     "It may be PREPROCESSED and contain a summary marker like '...[N line items summarized]...'. "
@@ -53,6 +54,11 @@ JSON_INSTRUCTIONS = (
     "Return ONLY the JSON object. No markdown, no code fences, no commentary."
 )
 
+# Registry of prompts by version label. Extendable without code churn elsewhere.
+PROMPTS = {
+    "v1": JSON_INSTRUCTIONS,
+}
+
 
 class LLMService:
     def __init__(self) -> None:
@@ -64,6 +70,9 @@ class LLMService:
             self.max_output_tokens = max(256, min(8192, mot))
         except Exception:
             self.max_output_tokens = 4096
+        # Select prompt by version (defaults to v1)
+        self.prompt_version = (self.settings.LLM_PROMPT_VERSION or "v1").strip()
+        self.instructions = PROMPTS.get(self.prompt_version, JSON_INSTRUCTIONS)
 
     def _gemini_url(self) -> str:
         model = self.settings.GEMINI_MODEL or "gemini-2.5-flash"
@@ -101,7 +110,7 @@ class LLMService:
                 {
                     "role": "user",
                     "parts": [
-                        {"text": JSON_INSTRUCTIONS},
+                        {"text": self.instructions},
                         {"text": "\n---- OCR TEXT ----\n" + text[:15000]},
                     ],
                 }
@@ -136,7 +145,7 @@ class LLMService:
         payload = {
             "model": self.settings.OPENROUTER_MODEL or "meta-llama/llama-3.3-70b-instruct:free",
             "messages": [
-                {"role": "system", "content": JSON_INSTRUCTIONS},
+                {"role": "system", "content": self.instructions},
                 {"role": "user", "content": text[:12000]},
             ],
             "temperature": 0.2,
