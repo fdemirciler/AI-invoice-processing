@@ -2,10 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
 // MessageCenter and inline banners removed in favor of unified toasts
-import { Sparkles, Moon, Sun, RefreshCcw, Github } from 'lucide-react';
+import { Sparkles, Moon, Sun, RefreshCcw, Github, HelpCircle, UploadCloud, FileSpreadsheet } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import type { HttpError } from '@/lib/api';
@@ -112,6 +115,10 @@ export default function Home() {
   }, [sessionId, onExport, toast]);
 
   const hasResults = results.length > 0;
+  const isEmpty = jobs.length === 0 && !hasResults;
+  const maxFiles = limits?.maxFiles ?? '-';
+  const maxSizeMb = limits?.maxSizeMb ?? '-';
+  const maxPages = limits?.maxPages ?? '-';
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -124,6 +131,53 @@ export default function Home() {
             </div>
             <TooltipProvider>
               <div className="flex items-center gap-2">
+                {/* Help dialog */}
+                <Dialog>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Help"
+                          className="hover:bg-primary/20"
+                        >
+                          <HelpCircle className="h-5 w-5" />
+                        </Button>
+                      </DialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>help & about</TooltipContent>
+                  </Tooltip>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle>About This App</DialogTitle>
+                    </DialogHeader>
+                    <Accordion type="single" collapsible className="mt-4">
+                      <AccordionItem value="limits">
+                        <AccordionTrigger>Usage Limits</AccordionTrigger>
+                        <AccordionContent>
+                          <ul className="list-disc pl-5 space-y-1">
+                            <li>Max files per upload: <strong>{maxFiles}</strong></li>
+                            <li>Max file size: <strong>{maxSizeMb}</strong> MB</li>
+                            <li>Max pages per PDF: <strong>{maxPages}</strong></li>
+                          </ul>
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="privacy">
+                        <AccordionTrigger>Privacy & Security</AccordionTrigger>
+                        <AccordionContent>
+                          Your files are processed securely and are automatically deleted once your session ends or when you clear data. Nothing is stored permanently.
+                        </AccordionContent>
+                      </AccordionItem>
+                      <AccordionItem value="tech">
+                        <AccordionTrigger>Technology</AccordionTrigger>
+                        <AccordionContent>
+                          Powered by <strong>Google Cloud Vision</strong> for OCR and <strong>Gemini AI</strong> for structured data extraction.
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  </DialogContent>
+                </Dialog>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -176,6 +230,12 @@ export default function Home() {
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
           {/* Unified toasts handle all messages now */}
+          {isEmpty && (
+            <div className="text-center space-y-2 animate-fade-in-down">
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">AI Invoice Processing</h2>
+              <p className="text-muted-foreground">Turn your PDF invoices into structured data, ready for export.</p>
+            </div>
+          )}
           <SmartHub
             jobs={jobs}
             limits={limits}
@@ -185,6 +245,31 @@ export default function Home() {
             disableUpload={disableUpload}
             disableRetry={disableRetry}
           />
+          {isEmpty && (
+            <div className="grid gap-6 md:grid-cols-3 mt-8">
+              <Card className="p-4 text-center">
+                <div className="flex justify-center mb-2 text-primary">
+                  <UploadCloud className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold">1. Upload</h3>
+                <p className="text-sm text-muted-foreground">Drag and drop your PDF invoices to get started.</p>
+              </Card>
+              <Card className="p-4 text-center">
+                <div className="flex justify-center mb-2 text-primary">
+                  <Sparkles className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold">2. Process</h3>
+                <p className="text-sm text-muted-foreground">AI automatically extracts and organizes your invoice details.</p>
+              </Card>
+              <Card className="p-4 text-center">
+                <div className="flex justify-center mb-2 text-primary">
+                  <FileSpreadsheet className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold">3. Export</h3>
+                <p className="text-sm text-muted-foreground">Review results and export them instantly as CSV.</p>
+              </Card>
+            </div>
+          )}
           {hasResults && <ResultsTable results={results} onExport={handleExport} />}
         </div>
       </main>
