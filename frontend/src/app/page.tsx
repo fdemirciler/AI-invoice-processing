@@ -2,19 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { ResultsTable } from '@/components/invoice-insights/results-table';
 // MessageCenter and inline banners removed in favor of unified toasts
-import { Sparkles, Moon, Sun, RefreshCcw, Github, HelpCircle, UploadCloud, FileSpreadsheet } from 'lucide-react';
+import { Moon, Sun, RefreshCcw, Github, HelpCircle, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import type { HttpError } from '@/lib/api';
 import { useSession } from '@/hooks/useSession';
 import { useConfig } from '@/hooks/useConfig';
 import { useJobs } from '@/hooks/useJobs';
+import { Frontpage } from '@/components/marketing/frontpage';
 
 
 // --- Main Component ---
@@ -27,6 +27,7 @@ export default function Home() {
   // Control disabling during rate-limit events
   const [disableUpload, setDisableUpload] = useState(false);
   const [disableRetry, setDisableRetry] = useState(false);
+  const [showFrontpage, setShowFrontpage] = useState(true);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'dark';
@@ -45,6 +46,20 @@ export default function Home() {
     if (sessionId) void rehydrate(sessionId);
   }, [sessionId, rehydrate]);
 
+  // Initialize frontpage visibility from URL/localStorage
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const force = params.get('frontpage');
+      if (force === '1') {
+        setShowFrontpage(true);
+        return;
+      }
+      const dismissed = localStorage.getItem('frontpageDismissed');
+      setShowFrontpage(dismissed === '1' ? false : true);
+    } catch {}
+  }, []);
+
   // Surface config errors via toast; optionally retry on transient network errors
   useEffect(() => {
     if (!configError) return;
@@ -54,6 +69,14 @@ export default function Home() {
       setTimeout(() => reloadConfig().catch(() => {}), 600);
     }
   }, [configError, reloadConfig, toast]);
+
+  // Auto-hide frontpage if any jobs/results exist
+  useEffect(() => {
+    if (showFrontpage && (jobs.length > 0 || results.length > 0)) {
+      setShowFrontpage(false);
+      try { localStorage.setItem('frontpageDismissed', '1'); } catch {}
+    }
+  }, [jobs.length, results.length, showFrontpage]);
 
   const handleFilesAdded = useCallback(async (files: File[]) => {
     if (!sessionId) return;
@@ -115,10 +138,22 @@ export default function Home() {
   }, [sessionId, onExport, toast]);
 
   const hasResults = results.length > 0;
-  const isEmpty = jobs.length === 0 && !hasResults;
   const maxFiles = limits?.maxFiles ?? '-';
   const maxSizeMb = limits?.maxSizeMb ?? '-';
   const maxPages = limits?.maxPages ?? '-';
+
+  const handleStartFrontpage = useCallback(() => {
+    setShowFrontpage(false);
+    try { localStorage.setItem('frontpageDismissed', '1'); } catch {}
+    setTimeout(() => {
+      const el = document.getElementById('upload-area');
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const focusable = el.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') as HTMLElement | null;
+        focusable?.focus();
+      }
+    }, 50);
+  }, []);
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -126,7 +161,7 @@ export default function Home() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-2">
-              <Sparkles className="h-6 w-6 text-primary" />
+              <Zap className="h-6 w-6 text-primary" />
               <h1 className="text-md font-bold font-headline text-primary">AI Powered Invoice Processing</h1>
             </div>
             <TooltipProvider>
@@ -230,47 +265,23 @@ export default function Home() {
       <main className="flex-1 container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="space-y-6">
           {/* Unified toasts handle all messages now */}
-          {isEmpty && (
-            <div className="text-center space-y-2 animate-fade-in-down">
-              <h2 className="text-3xl font-bold tracking-tight text-foreground">AI Invoice Processing</h2>
-              <p className="text-muted-foreground">Turn your PDF invoices into structured data, ready for export.</p>
-            </div>
+          {showFrontpage ? (
+            <Frontpage limits={limits} onStart={handleStartFrontpage} />
+          ) : (
+            <>
+              <div id="upload-area" />
+              <SmartHub
+                jobs={jobs}
+                limits={limits}
+                onFilesAdded={handleFilesAdded}
+                onRetry={handleRetryJob}
+                bannerText={''}
+                disableUpload={disableUpload}
+                disableRetry={disableRetry}
+              />
+              {hasResults && <ResultsTable results={results} onExport={handleExport} />}
+            </>
           )}
-          <SmartHub
-            jobs={jobs}
-            limits={limits}
-            onFilesAdded={handleFilesAdded}
-            onRetry={handleRetryJob}
-            bannerText={''}
-            disableUpload={disableUpload}
-            disableRetry={disableRetry}
-          />
-          {isEmpty && (
-            <div className="grid gap-6 md:grid-cols-3 mt-8">
-              <Card className="p-4 text-center">
-                <div className="flex justify-center mb-2 text-primary">
-                  <UploadCloud className="h-6 w-6" />
-                </div>
-                <h3 className="font-semibold">1. Upload</h3>
-                <p className="text-sm text-muted-foreground">Drag and drop your PDF invoices to get started.</p>
-              </Card>
-              <Card className="p-4 text-center">
-                <div className="flex justify-center mb-2 text-primary">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-                <h3 className="font-semibold">2. Process</h3>
-                <p className="text-sm text-muted-foreground">AI automatically extracts and organizes your invoice details.</p>
-              </Card>
-              <Card className="p-4 text-center">
-                <div className="flex justify-center mb-2 text-primary">
-                  <FileSpreadsheet className="h-6 w-6" />
-                </div>
-                <h3 className="font-semibold">3. Export</h3>
-                <p className="text-sm text-muted-foreground">Review results and export them instantly as CSV.</p>
-              </Card>
-            </div>
-          )}
-          {hasResults && <ResultsTable results={results} onExport={handleExport} />}
         </div>
       </main>
     </div>
