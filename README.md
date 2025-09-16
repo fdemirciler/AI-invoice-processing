@@ -75,6 +75,27 @@ and old sessions are automatically purged after a short retention window.
 - Tiered OCR: Vision-only. Uses synchronous Vision for short scans (≤ OCR_SYNC_MAX_PAGES) and falls back to asynchronous Vision for larger PDFs.
 - Sanitizer preprocessing: Lightweight, line‑preserving sanitization (configurable top/bottom strip, noise removal, smart truncation) before the LLM.
 
+## Backend structure (refactor summary)
+
+For a deeper dive, see `docs/backend-architecture.md`.
+
+- Routers (`backend/app/routers/`)
+  - `jobs.py`: HTTP endpoints for uploads, listing, retry, export, and session delete. Thin — delegates to orchestration.
+  - `tasks.py`: Worker HTTP endpoint to trigger processing. Thin — delegates to orchestration.
+- Orchestration (`backend/app/services/orchestration/`)
+  - `job_service.py`: upload/retry/export/delete orchestration.
+  - `task_pipeline.py`: end‑to‑end pipeline (lock → OCR → sanitize → LLM → validate → score → persist → cleanup).
+- Pipeline helpers (`backend/app/pipeline/`)
+  - `preprocessing.py`: `sanitize_for_llm()`
+  - `evaluation.py`: `compute_confidence()`
+- Utilities (`backend/app/utils/`): `network.py` (client IP), `pdf.py` (page count)
+
+## Development notes (backend)
+
+- Emulation mode: Set `TASKS_EMULATE=true` to process jobs locally without Cloud Tasks; uploads schedule
+  `TaskPipelineService().process_invoice_job(...)` in-process.
+- Retention: Background loop is controlled via `RETENTION_*` envs in `backend/app/main.py`.
+- Rate limiting: 429 responses include `Retry-After` and `X-RateLimit-*` headers; see `services/rate_limit.py`.
 
 ## Endpoints
 
