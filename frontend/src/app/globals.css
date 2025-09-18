@@ -92,3 +92,53 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Material Symbols icon font settings (safe globally) */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+}
+
+/* Marketing section scoped variables to match design exactly */
+.marketing {
+  /* Colors from design */
+  --accent-color: #3B82F6; /* Tailwind blue-500 */
+  --background-light: #F7F9FC;
+  --background-dark: #0F172A;
+  --surface-light: #FFFFFF;
+  --surface-dark: #1E293B;
+  --text-primary-light: #111827; /* slate-900 */
+  --text-primary-dark: #F8FAFC;  /* slate-50 */
+  --text-secondary-light: #6B7280; /* gray-500 */
+  --text-secondary-dark: #94A3B8;  /* slate-400 */
+  font-family: 'Manrope', sans-serif;
+}
+
+.dark .marketing {
+  /* Variables for dark mode context */
+  --accent-color: #3B82F6;
+  --background-light: #F7F9FC;
+  --background-dark: #0F172A;
+  --surface-light: #FFFFFF;
+  --surface-dark: #1E293B;
+  --text-primary-light: #111827;
+  --text-primary-dark: #F8FAFC;
+  --text-secondary-light: #6B7280;
+  --text-secondary-dark: #94A3B8;
+}
+
+/* Background texture classes from design */
+.bg-texture-light {
+  background-image:
+    linear-gradient(rgba(247, 249, 252, 0.85), rgba(247, 249, 252, 0.85)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80' width='80' height='80'%3E%3Cpath fill='%23a1a1aa' fill-opacity='0.08' d='M0 0h40v40H0zM40 40h40v40H40z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+.dark .bg-texture-dark {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.9)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80' width='80' height='80'%3E%3Cpath fill='%23e2e8f0' fill-opacity='0.06' d='M0 0h40v40H0zM40 40h40v40H40z'%3E%3C/path%3E%3C/svg%3E");
+}
