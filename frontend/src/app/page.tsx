@@ -5,11 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
-import { ResultsTable } from '@/components/invoice-insights/results-table';
+import { InvoiceWorkspace } from '@/components/invoice-insights/invoice-workspace';
 // MessageCenter and inline banners removed in favor of unified toasts
 import { Moon, Sun, RefreshCcw, Github, HelpCircle, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { SmartHub } from '@/components/invoice-insights/smart-hub';
 import type { HttpError } from '@/lib/api';
 import { useSession } from '@/hooks/useSession';
 import { useConfig } from '@/hooks/useConfig';
@@ -137,7 +136,6 @@ export default function Home() {
     );
   }, [sessionId, onExport, toast]);
 
-  const hasResults = results.length > 0;
   const maxFiles = limits?.maxFiles ?? '-';
   const maxSizeMb = limits?.maxSizeMb ?? '-';
   const maxPages = limits?.maxPages ?? '-';
@@ -268,19 +266,17 @@ export default function Home() {
           {showFrontpage ? (
             <Frontpage limits={limits} onStart={handleStartFrontpage} />
           ) : (
-            <>
-              <div id="upload-area" />
-              <SmartHub
-                jobs={jobs}
-                limits={limits}
-                onFilesAdded={handleFilesAdded}
-                onRetry={handleRetryJob}
-                bannerText={''}
-                disableUpload={disableUpload}
-                disableRetry={disableRetry}
-              />
-              {hasResults && <ResultsTable results={results} onExport={handleExport} />}
-            </>
+            <InvoiceWorkspace
+              jobs={jobs}
+              limits={limits}
+              onFilesAdded={handleFilesAdded}
+              onRetry={handleRetryJob}
+              bannerText={''}
+              disableUpload={disableUpload}
+              disableRetry={disableRetry}
+              results={results}
+              onExport={handleExport}
+            />
           )}
         </div>
       </main>

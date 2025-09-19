@@ -1,20 +1,15 @@
 "use client";
 
 import React from 'react';
+import type { Limits } from '@/types/api';
 
-type Limits = {
-  maxFiles?: number;
-  maxSizeMb?: number;
-  maxPages?: number;
-};
-
-export function Frontpage({ limits, onStart }: { limits?: Limits; onStart: () => void }) {
+export function Frontpage({ limits, onStart }: { limits?: Limits | null; onStart: () => void }) {
   const maxFiles = limits?.maxFiles ?? '-';
   const maxSizeMb = limits?.maxSizeMb ?? '-';
   const maxPages = limits?.maxPages ?? '-';
 
   return (
-    <div className="marketing relative -mx-4 sm:-mx-6 lg:-mx-8 bg-texture-light bg-texture-dark" aria-label="frontpage">
+    <div className="marketing relative -mx-4 sm:-mx-6 lg:-mx-8 bg-texture-light dark:bg-texture-dark" aria-label="frontpage">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <main className="py-16 md:py-24">
           <section className="text-center max-w-3xl mx-auto mb-24 md:mb-32">
